@@ -1,0 +1,7 @@
+{
+  "name": "FinControl AI",
+  "description": "SaaS de gestão financeira de alta performance com projeções e insights de IA.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
