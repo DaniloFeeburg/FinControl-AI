@@ -11,7 +11,7 @@ FROM python:3.12-slim
 
 # Install Nginx and curl (for healthcheck)
 RUN apt-get update && \
-    apt-get install -y nginx curl && \
+    apt-get install -y nginx curl procps && \
     rm -rf /var/lib/apt/lists/*
 
 # Set working directory

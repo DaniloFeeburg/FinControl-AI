@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from pydantic import BaseModel
 from . import models, schemas, crud
 from .database import engine, get_db
 
@@ -87,8 +88,6 @@ def delete_reserve(reserve_id: str, db: Session = Depends(get_db)):
 class ReserveTransactionRequest(BaseModel):
     amount: float
     type: str
-
-from pydantic import BaseModel
 
 @app.post("/reserves/{reserve_id}/transactions", response_model=schemas.Reserve)
 def create_reserve_transaction(reserve_id: str, request: ReserveTransactionRequest, db: Session = Depends(get_db)):
