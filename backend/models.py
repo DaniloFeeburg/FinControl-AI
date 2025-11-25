@@ -1,6 +1,6 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Date
 from sqlalchemy.orm import relationship
-from database import Base
+from .database import Base
 import datetime
 
 class Category(Base):
