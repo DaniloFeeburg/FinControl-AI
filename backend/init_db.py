@@ -1,5 +1,5 @@
-from database import engine, Base
-import models
+from .database import engine, Base
+from . import models
 
 def init_db():
     print("Creating database tables...")
