@@ -9,33 +9,39 @@ RUN npm run build
 # Stage 2: Final Image with Python and Nginx
 FROM python:3.12-slim
 
-# Install Nginx
-RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
+# Install Nginx and curl (for healthcheck)
+RUN apt-get update && \
+    apt-get install -y nginx curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Set up Backend
+# Set working directory
 WORKDIR /app
-COPY backend/requirements.txt backend/
-RUN pip install --no-cache-dir -r backend/requirements.txt
 
+# Copy backend files
 COPY backend /app/backend
-COPY entrypoint.sh /app/
 
-# Copy Frontend Build
-COPY --from=build-stage /app/dist /usr/share/nginx/html
+# Create __init__.py to make backend a proper Python package
+RUN touch /app/backend/__init__.py
 
-# Copy Nginx Config
-COPY nginx.conf /etc/nginx/nginx.conf
+# Install Python dependencies
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
-# Initialize DB (Optional, or run as a separate job/manually)
-# It's better to not run this on every container start if it's destructive or slow,
-# but our init_db.py uses `create_all` which is safe.
-# However, we need to make sure we are in the right directory or path.
-# Let's run it in entrypoint or here. For now, let's assume it's run manually or we add it to entrypoint.
-
-# Expose port (Cloud Run defaults to 8080)
-EXPOSE 8080
-
-# Make entrypoint executable
+# Copy entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
+# Copy frontend build from stage 1
+COPY --from=build-stage /app/dist /usr/share/nginx/html
+
+# Copy Nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Expose port 8080 (Cloud Run default)
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8080/ || exit 1
+
+# Start services via entrypoint
 CMD ["/app/entrypoint.sh"]
