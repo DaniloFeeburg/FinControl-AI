@@ -13,7 +13,7 @@ fi
 
 # Start FastAPI backend in background
 echo "Step 2: Starting FastAPI backend on port 8000..."
-uvicorn backend.main:app --host 0.0.0.0 --port 8000 --log-level info &
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --log-level info &
 BACKEND_PID=$!
 
 # Wait for backend to be ready
@@ -30,11 +30,8 @@ while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
     if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
         echo "ERROR: Backend failed to start after $MAX_ATTEMPTS attempts"
-        echo "Checking if backend process is running..."
-        ps aux | grep uvicorn
         exit 1
     fi
-
     echo "Waiting... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
     sleep 1
 done
