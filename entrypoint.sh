@@ -12,8 +12,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # Start FastAPI backend in background
-echo "Step 2: Starting FastAPI backend on port 8000..."
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --log-level info &
+echo "Step 2: Starting FastAPI backend on port 8080..."
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080 --log-level info &
 BACKEND_PID=$!
 
 # Wait for backend to be ready
@@ -22,7 +22,7 @@ MAX_ATTEMPTS=30
 ATTEMPT=0
 
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    if curl -s -f http://localhost:8000/categories > /dev/null 2>&1; then
+    if curl -s -f http://localhost:8080/categories > /dev/null 2>&1; then
         echo "✓ Backend is ready and responding!"
         break
     fi
