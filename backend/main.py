@@ -10,6 +10,10 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+@app.get("/")
+def root():
+    return {"message": "FinControl AI API is running"}
+
 # Allow CORS for frontend (assuming localhost or same origin)
 origins = [
     "http://localhost",
