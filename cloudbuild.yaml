@@ -1,4 +1,14 @@
 steps:
+  # 0. Criar Repositório no Artifact Registry (se não existir)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud artifacts repositories describe $_AR_REPO --location=$_DEPLOY_REGION || \
+        gcloud artifacts repositories create $_AR_REPO --repository-format=docker \
+        --location=$_DEPLOY_REGION --description="Repository for FinControl AI"
+
   # 1. Build da Imagem Docker
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA', '.']
