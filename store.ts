@@ -1,50 +1,9 @@
 import { create } from 'zustand';
 import { Category, Transaction, RecurringRule, Reserve, ReserveTransaction } from './types';
-import { v4 as uuidv4 } from 'uuid';
 
-// Mock initial data (Translated)
-const INITIAL_CATEGORIES: Category[] = [
-  { id: '1', name: 'Salário', type: 'INCOME', is_fixed: true, color: '#10b981', icon: 'Wallet' },
-  { id: '2', name: 'Moradia', type: 'EXPENSE', is_fixed: true, color: '#f43f5e', icon: 'Home' },
-  { id: '3', name: 'Alimentação', type: 'EXPENSE', is_fixed: false, color: '#f59e0b', icon: 'Utensils' },
-  { id: '4', name: 'Transporte', type: 'EXPENSE', is_fixed: false, color: '#3b82f6', icon: 'Car' },
-  { id: '5', name: 'Freelance', type: 'INCOME', is_fixed: false, color: '#8b5cf6', icon: 'Laptop' },
-];
-
-const INITIAL_TRANSACTIONS: Transaction[] = [
-  { id: 't1', category_id: '1', amount: 500000, date: new Date(Date.now() - 86400000 * 10).toISOString().split('T')[0], description: 'Salário Mensal', status: 'PAID', created_at: new Date().toISOString() },
-  { id: 't2', category_id: '2', amount: -150000, date: new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0], description: 'Aluguel', status: 'PAID', created_at: new Date().toISOString() },
-  { id: 't3', category_id: '3', amount: -8500, date: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0], description: 'Supermercado', status: 'PAID', created_at: new Date().toISOString() },
-];
-
-const INITIAL_RULES: RecurringRule[] = [
-  { id: 'r1', category_id: '2', amount: -150000, description: 'Pagamento Aluguel', rrule: 'FREQ=MONTHLY;BYMONTHDAY=5', active: true },
-  { id: 'r2', category_id: '1', amount: 500000, description: 'Salário', rrule: 'FREQ=MONTHLY;BYMONTHDAY=1', active: true },
-  { id: 'r3', category_id: '4', amount: -20000, description: 'Internet', rrule: 'FREQ=MONTHLY;BYMONTHDAY=15', active: true },
-];
-
-const INITIAL_RESERVES: Reserve[] = [
-  { 
-    id: 'res1', 
-    name: 'Reserva de Emergência', 
-    target_amount: 1000000, 
-    current_amount: 250000, 
-    deadline: '2024-12-31',
-    history: [
-      { id: 'rh1', date: new Date(Date.now() - 86400000 * 20).toISOString(), amount: 250000, type: 'DEPOSIT' }
-    ]
-  },
-  { 
-    id: 'res2', 
-    name: 'Notebook Novo', 
-    target_amount: 300000, 
-    current_amount: 50000, 
-    deadline: '2024-08-15',
-    history: [
-      { id: 'rh2', date: new Date(Date.now() - 86400000 * 5).toISOString(), amount: 50000, type: 'DEPOSIT' }
-    ]
-  },
-];
+// API URL - in production it will be relative, or we can use an env var
+// If the backend is on the same host/port (e.g. via Nginx proxy), use relative path.
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface AppState {
   categories: Category[];
@@ -52,107 +11,261 @@ interface AppState {
   recurringRules: RecurringRule[];
   reserves: Reserve[];
   
+  loading: boolean;
+  error: string | null;
+
+  // Initialization
+  fetchAllData: () => Promise<void>;
+
   // Transactions
-  addTransaction: (t: Omit<Transaction, 'id' | 'created_at'>) => void;
-  updateTransaction: (id: string, t: Partial<Omit<Transaction, 'id' | 'created_at'>>) => void;
-  deleteTransaction: (id: string) => void;
+  addTransaction: (t: Omit<Transaction, 'id' | 'created_at'>) => Promise<void>;
+  updateTransaction: (id: string, t: Partial<Omit<Transaction, 'id' | 'created_at'>>) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
 
   // Categories
-  addCategory: (c: Omit<Category, 'id'>) => void;
-  updateCategory: (id: string, c: Partial<Omit<Category, 'id'>>) => void;
-  deleteCategory: (id: string) => void;
+  addCategory: (c: Omit<Category, 'id'>) => Promise<void>;
+  updateCategory: (id: string, c: Partial<Omit<Category, 'id'>>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
 
   // Rules
-  addRecurringRule: (r: Omit<RecurringRule, 'id'>) => void;
+  addRecurringRule: (r: Omit<RecurringRule, 'id'>) => Promise<void>;
 
   // Reserves
-  addReserve: (r: Omit<Reserve, 'id' | 'history'>) => void;
-  updateReserve: (id: string, r: Partial<Reserve>) => void;
-  deleteReserve: (id: string) => void;
-  addReserveTransaction: (reserveId: string, amount: number, type: 'DEPOSIT' | 'WITHDRAW') => void;
+  addReserve: (r: Omit<Reserve, 'id' | 'history'>) => Promise<void>;
+  updateReserve: (id: string, r: Partial<Reserve>) => Promise<void>;
+  deleteReserve: (id: string) => Promise<void>;
+  addReserveTransaction: (reserveId: string, amount: number, type: 'DEPOSIT' | 'WITHDRAW') => Promise<void>;
   
   // Helpers
   getBalance: () => number;
-  getAvailableBalance: () => number; // Balance - Reserves
+  getAvailableBalance: () => number;
 }
 
 export const useStore = create<AppState>((set, get) => ({
-  categories: INITIAL_CATEGORIES,
-  transactions: INITIAL_TRANSACTIONS,
-  recurringRules: INITIAL_RULES,
-  reserves: INITIAL_RESERVES,
+  categories: [],
+  transactions: [],
+  recurringRules: [],
+  reserves: [],
+  loading: false,
+  error: null,
 
-  // Transaction Actions
-  addTransaction: (t) => set((state) => ({
-    transactions: [
-      { ...t, id: uuidv4(), created_at: new Date().toISOString() },
-      ...state.transactions
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  })),
+  fetchAllData: async () => {
+    set({ loading: true, error: null });
+    try {
+      const [cats, trans, rules, res] = await Promise.all([
+        fetch(`${API_URL}/categories`).then(r => r.json()),
+        fetch(`${API_URL}/transactions`).then(r => r.json()),
+        fetch(`${API_URL}/recurring_rules`).then(r => r.json()),
+        fetch(`${API_URL}/reserves`).then(r => r.json())
+      ]);
+      set({
+        categories: cats,
+        transactions: trans,
+        recurringRules: rules,
+        reserves: res,
+        loading: false
+      });
+    } catch (err) {
+      console.error(err);
+      set({ error: 'Failed to fetch data', loading: false });
+    }
+  },
 
-  updateTransaction: (id, updatedT) => set((state) => ({
-    transactions: state.transactions.map(t => 
-      t.id === id ? { ...t, ...updatedT } : t
-    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  })),
+  addTransaction: async (t) => {
+    try {
+        const response = await fetch(`${API_URL}/transactions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(t)
+        });
+        if (!response.ok) throw new Error('Failed to add transaction');
+        const newTransaction = await response.json();
+        set((state) => ({
+            transactions: [newTransaction, ...state.transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        }));
+    } catch (err) {
+        console.error(err);
+    }
+  },
 
-  deleteTransaction: (id) => set((state) => ({
-    transactions: state.transactions.filter(t => t.id !== id)
-  })),
+  updateTransaction: async (id, updatedT) => {
+      try {
+          const response = await fetch(`${API_URL}/transactions/${id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatedT)
+          });
+          if (!response.ok) throw new Error('Failed to update transaction');
+          const savedTransaction = await response.json();
+          set((state) => ({
+              transactions: state.transactions.map(t =>
+                  t.id === id ? savedTransaction : t
+              ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
 
-  // Category Actions
-  addCategory: (c) => set((state) => ({
-    categories: [...state.categories, { ...c, id: uuidv4() }]
-  })),
+  deleteTransaction: async (id) => {
+      try {
+          const response = await fetch(`${API_URL}/transactions/${id}`, {
+              method: 'DELETE'
+          });
+          if (!response.ok) throw new Error('Failed to delete transaction');
+          set((state) => ({
+              transactions: state.transactions.filter(t => t.id !== id)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
 
-  updateCategory: (id, updatedC) => set((state) => ({
-    categories: state.categories.map(c => c.id === id ? { ...c, ...updatedC } : c)
-  })),
+  addCategory: async (c) => {
+      try {
+          const response = await fetch(`${API_URL}/categories`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(c)
+          });
+          if (!response.ok) throw new Error('Failed to add category');
+          const newCategory = await response.json();
+          set((state) => ({
+              categories: [...state.categories, newCategory]
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
 
-  deleteCategory: (id) => set((state) => ({
-    categories: state.categories.filter(c => c.id !== id)
-  })),
+  updateCategory: async (id, updatedC) => {
+      // Note: Backend might need full object for PUT, but let's assume it handles partial or we merge.
+      // My backend implementation uses create schema which needs all fields.
+      // So I should fetch the category first or merge it in frontend.
+      // Since I have the state, I can merge it.
+      const currentCategory = get().categories.find(c => c.id === id);
+      if (!currentCategory) return;
 
-  // Rule Actions
-  addRecurringRule: (r) => set((state) => ({
-    recurringRules: [...state.recurringRules, { ...r, id: uuidv4() }]
-  })),
+      const merged = { ...currentCategory, ...updatedC };
+      // Remove id from merged if it's there, as backend expects Create schema
+      const { id: _, ...payload } = merged;
 
-  // Reserve Actions
-  addReserve: (r) => set((state) => ({
-    reserves: [...state.reserves, { ...r, id: uuidv4(), history: [] }]
-  })),
+      try {
+          const response = await fetch(`${API_URL}/categories/${id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+          });
+          if (!response.ok) throw new Error('Failed to update category');
+          const savedCategory = await response.json();
+          set((state) => ({
+              categories: state.categories.map(c => c.id === id ? savedCategory : c)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
 
-  updateReserve: (id, updatedR) => set((state) => ({
-    reserves: state.reserves.map(r => r.id === id ? { ...r, ...updatedR } : r)
-  })),
+  deleteCategory: async (id) => {
+      try {
+          const response = await fetch(`${API_URL}/categories/${id}`, {
+              method: 'DELETE'
+          });
+          if (!response.ok) throw new Error('Failed to delete category');
+          set((state) => ({
+              categories: state.categories.filter(c => c.id !== id)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
 
-  deleteReserve: (id) => set((state) => ({
-    reserves: state.reserves.filter(r => r.id !== id)
-  })),
+  addRecurringRule: async (r) => {
+      try {
+          const response = await fetch(`${API_URL}/recurring_rules`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(r)
+          });
+          if (!response.ok) throw new Error('Failed to add rule');
+          const newRule = await response.json();
+          set((state) => ({
+              recurringRules: [...state.recurringRules, newRule]
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
 
-  addReserveTransaction: (reserveId, amount, type) => set((state) => ({
-    reserves: state.reserves.map(r => {
-      if (r.id !== reserveId) return r;
-      
-      const newHistoryItem: ReserveTransaction = {
-        id: uuidv4(),
-        date: new Date().toISOString(),
-        amount: amount,
-        type: type
-      };
+  addReserve: async (r) => {
+      try {
+          const response = await fetch(`${API_URL}/reserves`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(r)
+          });
+          if (!response.ok) throw new Error('Failed to add reserve');
+          const newReserve = await response.json();
+          set((state) => ({
+              reserves: [...state.reserves, newReserve]
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
 
-      const newCurrentAmount = type === 'DEPOSIT' 
-        ? r.current_amount + amount 
-        : r.current_amount - amount;
+  updateReserve: async (id, updatedR) => {
+      const currentReserve = get().reserves.find(r => r.id === id);
+      if (!currentReserve) return;
+      const merged = { ...currentReserve, ...updatedR };
+      const { id: _, history: __, ...payload } = merged; // Remove id and history
 
-      return {
-        ...r,
-        current_amount: newCurrentAmount,
-        history: [newHistoryItem, ...r.history]
-      };
-    })
-  })),
+      try {
+          const response = await fetch(`${API_URL}/reserves/${id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+          });
+          if (!response.ok) throw new Error('Failed to update reserve');
+          const savedReserve = await response.json();
+          set((state) => ({
+              reserves: state.reserves.map(r => r.id === id ? savedReserve : r)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
+
+  deleteReserve: async (id) => {
+      try {
+          const response = await fetch(`${API_URL}/reserves/${id}`, {
+              method: 'DELETE'
+          });
+          if (!response.ok) throw new Error('Failed to delete reserve');
+          set((state) => ({
+              reserves: state.reserves.filter(r => r.id !== id)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
+
+  addReserveTransaction: async (reserveId, amount, type) => {
+      try {
+          const response = await fetch(`${API_URL}/reserves/${reserveId}/transactions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ amount, type })
+          });
+          if (!response.ok) throw new Error('Failed to add reserve transaction');
+          const updatedReserve = await response.json();
+          set((state) => ({
+              reserves: state.reserves.map(r => r.id === reserveId ? updatedReserve : r)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
 
   // Helpers
   getBalance: () => {
