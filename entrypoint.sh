@@ -1,10 +1,45 @@
 #!/bin/bash
+set -e
 
-# Initialize the database
-python -m backend.init_db
+echo "=== FinControl AI Startup ==="
 
-# Start Backend in background
-uvicorn backend.main:app --host 127.0.0.1 --port 8000 &
+# Initialize database tables
+echo "Step 1: Initializing database tables..."
+cd /app
+python backend/init_tables.py
+if [ $? -ne 0 ]; then
+    echo "ERROR: Database initialization failed"
+    exit 1
+fi
+
+# Start FastAPI backend in background
+echo "Step 2: Starting FastAPI backend on port 8000..."
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --log-level info &
+BACKEND_PID=$!
+
+# Wait for backend to be ready
+echo "Step 3: Waiting for backend to be ready..."
+MAX_ATTEMPTS=30
+ATTEMPT=0
+
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+    if curl -s -f http://localhost:8000/categories > /dev/null 2>&1; then
+        echo "✓ Backend is ready and responding!"
+        break
+    fi
+
+    ATTEMPT=$((ATTEMPT + 1))
+    if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+        echo "ERROR: Backend failed to start after $MAX_ATTEMPTS attempts"
+        echo "Checking if backend process is running..."
+        ps aux | grep uvicorn
+        exit 1
+    fi
+
+    echo "Waiting... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+    sleep 1
+done
 
 # Start Nginx in foreground
-nginx -g "daemon off;"
+echo "Step 4: Starting Nginx..."
+exec nginx -g "daemon off;"

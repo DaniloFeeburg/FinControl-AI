@@ -30,7 +30,13 @@ steps:
       - '$_DEPLOY_REGION'
       - '--platform'
       - 'managed'
-      - '--allow-unauthenticated' # Permite acesso público (remova se for interno)
+      - '--allow-unauthenticated'
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest'
+      - '--timeout=300'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--max-instances=10'
+      - '--min-instances=0'
 
 # Configuração de Substituições (Variáveis)
 substitutions:
