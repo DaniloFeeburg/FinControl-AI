@@ -1,0 +1,32 @@
+steps:
+  # 1. Build da Imagem Docker
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA', '.']
+
+  # 2. Push da Imagem para o Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA']
+
+  # 3. Deploy no Google Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'fincontrol-ai'
+      - '--image'
+      - '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA'
+      - '--region'
+      - '$_DEPLOY_REGION'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated' # Permite acesso público (remova se for interno)
+
+# Configuração de Substituições (Variáveis)
+substitutions:
+  _AR_HOSTNAME: 'us-central1-docker.pkg.dev' # Host do Artifact Registry
+  _AR_REPO: 'fincontrol-repo'                # Nome do seu repositório no Artifact Registry
+  _DEPLOY_REGION: 'us-central1'              # Região do Cloud Run
+
+images:
+  - '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA'

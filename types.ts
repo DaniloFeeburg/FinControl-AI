@@ -29,12 +29,20 @@ export interface RecurringRule {
   active: boolean;
 }
 
+export interface ReserveTransaction {
+  id: string;
+  date: string;
+  amount: number;
+  type: 'DEPOSIT' | 'WITHDRAW';
+}
+
 export interface Reserve {
   id: string;
   name: string;
   target_amount: number;
   current_amount: number;
   deadline: string;
+  history: ReserveTransaction[];
 }
 
 export interface DailyProjection {

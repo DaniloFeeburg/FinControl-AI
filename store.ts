@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Category, Transaction, RecurringRule, Reserve } from './types';
+import { Category, Transaction, RecurringRule, Reserve, ReserveTransaction } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
 // Mock initial data (Translated)
@@ -24,8 +24,26 @@ const INITIAL_RULES: RecurringRule[] = [
 ];
 
 const INITIAL_RESERVES: Reserve[] = [
-  { id: 'res1', name: 'Reserva de Emergência', target_amount: 1000000, current_amount: 250000, deadline: '2024-12-31' },
-  { id: 'res2', name: 'Notebook Novo', target_amount: 300000, current_amount: 50000, deadline: '2024-08-15' },
+  { 
+    id: 'res1', 
+    name: 'Reserva de Emergência', 
+    target_amount: 1000000, 
+    current_amount: 250000, 
+    deadline: '2024-12-31',
+    history: [
+      { id: 'rh1', date: new Date(Date.now() - 86400000 * 20).toISOString(), amount: 250000, type: 'DEPOSIT' }
+    ]
+  },
+  { 
+    id: 'res2', 
+    name: 'Notebook Novo', 
+    target_amount: 300000, 
+    current_amount: 50000, 
+    deadline: '2024-08-15',
+    history: [
+      { id: 'rh2', date: new Date(Date.now() - 86400000 * 5).toISOString(), amount: 50000, type: 'DEPOSIT' }
+    ]
+  },
 ];
 
 interface AppState {
@@ -48,9 +66,10 @@ interface AppState {
   addRecurringRule: (r: Omit<RecurringRule, 'id'>) => void;
 
   // Reserves
-  addReserve: (r: Omit<Reserve, 'id'>) => void;
+  addReserve: (r: Omit<Reserve, 'id' | 'history'>) => void;
   updateReserve: (id: string, r: Partial<Reserve>) => void;
   deleteReserve: (id: string) => void;
+  addReserveTransaction: (reserveId: string, amount: number, type: 'DEPOSIT' | 'WITHDRAW') => void;
   
   // Helpers
   getBalance: () => number;
@@ -101,7 +120,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Reserve Actions
   addReserve: (r) => set((state) => ({
-    reserves: [...state.reserves, { ...r, id: uuidv4() }]
+    reserves: [...state.reserves, { ...r, id: uuidv4(), history: [] }]
   })),
 
   updateReserve: (id, updatedR) => set((state) => ({
@@ -110,6 +129,29 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteReserve: (id) => set((state) => ({
     reserves: state.reserves.filter(r => r.id !== id)
+  })),
+
+  addReserveTransaction: (reserveId, amount, type) => set((state) => ({
+    reserves: state.reserves.map(r => {
+      if (r.id !== reserveId) return r;
+      
+      const newHistoryItem: ReserveTransaction = {
+        id: uuidv4(),
+        date: new Date().toISOString(),
+        amount: amount,
+        type: type
+      };
+
+      const newCurrentAmount = type === 'DEPOSIT' 
+        ? r.current_amount + amount 
+        : r.current_amount - amount;
+
+      return {
+        ...r,
+        current_amount: newCurrentAmount,
+        history: [newHistoryItem, ...r.history]
+      };
+    })
   })),
 
   // Helpers

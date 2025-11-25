@@ -54,3 +54,28 @@ export const calculateProjection = (
 
   return projections;
 };
+
+// Nova função para cálculo de reservas
+export const calculateMonthlySavingsNeeded = (
+  targetAmount: number,
+  currentAmount: number,
+  deadlineStr: string
+): { monthlyAmount: number; monthsRemaining: number; isLate: boolean } => {
+  const deadline = new Date(deadlineStr);
+  const today = new Date();
+  
+  // Diferença em meses
+  const monthsRemaining = (deadline.getFullYear() - today.getFullYear()) * 12 + (deadline.getMonth() - today.getMonth());
+  
+  if (monthsRemaining <= 0) {
+    return { monthlyAmount: targetAmount - currentAmount, monthsRemaining: 0, isLate: true };
+  }
+
+  const remainingToSave = targetAmount - currentAmount;
+  if (remainingToSave <= 0) return { monthlyAmount: 0, monthsRemaining, isLate: false };
+
+  // Divisão simples pelo número de meses restantes
+  const monthlyAmount = Math.ceil(remainingToSave / monthsRemaining);
+
+  return { monthlyAmount, monthsRemaining, isLate: false };
+};
