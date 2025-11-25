@@ -5,7 +5,7 @@ import os
 
 # Connection string provided by the user
 # Use environment variable if available, otherwise fallback to the provided string (for sandbox/dev)
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:KgoYNZcmW6ifnLkq@db.ojqxnzjorthhozhkliix.supabase.co:5432/postgres")
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:FhQQBFrnJbAfWr1v@db.ojqxnzjorthhozhkliix.supabase.co:5432/postgres")
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -31,6 +31,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated' # Permite acesso público (remova se for interno)
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest'
 
 # Configuração de Substituições (Variáveis)
 substitutions:

@@ -4,7 +4,7 @@
 python -m backend.init_db
 
 # Start Backend in background
-uvicorn backend.main:app --host 127.0.0.1 --port 8000 &
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
 
 # Start Nginx in foreground
 nginx -g "daemon off;"
