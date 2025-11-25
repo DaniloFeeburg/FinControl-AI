@@ -4,10 +4,16 @@ import { Dashboard } from './pages/Dashboard';
 import { Transactions } from './pages/Transactions';
 import { Categories } from './pages/Categories';
 import { Reserves } from './pages/Reserves';
+import { useStore } from './store';
 
 // Simple router based on hash for SPA compatibility without server configuration
 const Router = () => {
   const [route, setRoute] = React.useState(window.location.hash || '#/');
+  const fetchAllData = useStore((state) => state.fetchAllData);
+
+  React.useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
 
   React.useEffect(() => {
     const handleHashChange = () => setRoute(window.location.hash || '#/');
