@@ -28,5 +28,8 @@ substitutions:
   _AR_REPO: 'fincontrol-repo'                # Nome do seu repositório no Artifact Registry
   _DEPLOY_REGION: 'us-central1'              # Região do Cloud Run
 
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 images:
   - '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA'
