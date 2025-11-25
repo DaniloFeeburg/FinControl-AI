@@ -20,9 +20,6 @@ WORKDIR /app
 # Copy backend files
 COPY backend /app/backend
 
-# Create __init__.py to make backend a proper Python package
-RUN touch /app/backend/__init__.py
-
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 

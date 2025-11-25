@@ -5,8 +5,7 @@ echo "=== FinControl AI Startup ==="
 
 # Initialize database tables
 echo "Step 1: Initializing database tables..."
-cd /app
-python backend/init_tables.py
+python -m backend.init_tables
 if [ $? -ne 0 ]; then
     echo "ERROR: Database initialization failed"
     exit 1

@@ -1,9 +1,5 @@
 # backend/init_tables.py
 import sys
-import os
-
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from backend.database import engine, Base
 from backend import models
