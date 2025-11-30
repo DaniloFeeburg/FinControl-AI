@@ -1,6 +1,32 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
+# Auth Schemas
+class UserBase(BaseModel):
+    email: str
+    name: str
+
+class UserCreate(UserBase):
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class User(UserBase):
+    id: str
+
+    class Config:
+        from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+# Existing Schemas
 class CategoryBase(BaseModel):
     name: str
     type: str
@@ -13,6 +39,7 @@ class CategoryCreate(CategoryBase):
 
 class Category(CategoryBase):
     id: str
+    user_id: str
 
     class Config:
         from_attributes = True
@@ -29,6 +56,7 @@ class TransactionCreate(TransactionBase):
 
 class Transaction(TransactionBase):
     id: str
+    user_id: str
     created_at: str
 
     class Config:
@@ -46,6 +74,7 @@ class RecurringRuleCreate(RecurringRuleBase):
 
 class RecurringRule(RecurringRuleBase):
     id: str
+    user_id: str
 
     class Config:
         from_attributes = True
@@ -76,6 +105,7 @@ class ReserveCreate(ReserveBase):
 
 class Reserve(ReserveBase):
     id: str
+    user_id: str
     history: List[ReserveHistory] = []
 
     class Config:
