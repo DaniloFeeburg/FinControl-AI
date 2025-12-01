@@ -5,6 +5,9 @@ echo "=== FinControl AI Startup ==="
 
 # Step 1: Inicializar tabelas do banco
 echo "Step 1: Initializing database tables..."
+# Define ENVIRONMENT=dev se nao estiver definido, para garantir o comportamento desejado na demo,
+# mas em producao deve ser 'prod'.
+# O usuario nao especificou como definir a var, entao vou deixar o padrao do sistema.
 python -m backend.init_tables
 if [ $? -ne 0 ]; then
     echo "ERROR: Database initialization failed"

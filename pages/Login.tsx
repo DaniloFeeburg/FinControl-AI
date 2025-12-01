@@ -19,7 +19,10 @@ export const Login: React.FC = () => {
       await login(email, password);
       window.location.hash = '#/';
     } catch (err: any) {
-      setError('Email ou senha inválidos.');
+      // Exibe a mensagem de erro vinda do backend ou mensagem genérica
+      let msg = err.message || 'Email ou senha inválidos.';
+      if (msg === 'Failed to fetch') msg = 'Erro de conexão com o servidor.';
+      setError(msg);
     } finally {
       setIsLoading(false);
     }

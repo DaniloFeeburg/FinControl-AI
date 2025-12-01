@@ -1,13 +1,28 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
+import re
 
 # Auth Schemas
 class UserBase(BaseModel):
     email: str
     name: str
 
+    @field_validator('email')
+    def validate_email(cls, v):
+        # Basic regex for email validation
+        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_regex, v):
+            raise ValueError('Email inválido')
+        return v
+
 class UserCreate(UserBase):
     password: str
+
+    @field_validator('password')
+    def validate_password(cls, v):
+        if len(v) < 6:
+            raise ValueError('A senha deve ter pelo menos 6 caracteres')
+        return v
 
 class UserLogin(BaseModel):
     email: str

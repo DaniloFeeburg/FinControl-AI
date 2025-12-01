@@ -57,6 +57,20 @@ const getAuthHeaders = (token: string | null) => {
     };
 };
 
+// Helper function to handle fetch with 401 interception
+const authorizedFetch = async (url: string, options: RequestInit, logout: () => void) => {
+    try {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+            logout();
+            throw new Error('Sessão expirada');
+        }
+        return response;
+    } catch (error) {
+        throw error;
+    }
+};
+
 export const useStore = create<AppState>((set, get) => ({
   user: null,
   token: localStorage.getItem('token'),
@@ -76,7 +90,10 @@ export const useStore = create<AppState>((set, get) => ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         });
-        if (!response.ok) throw new Error('Falha no login');
+        if (!response.ok) {
+             const errorData = await response.json().catch(() => ({}));
+             throw new Error(errorData.detail || 'Falha no login');
+        }
         const data = await response.json();
         localStorage.setItem('token', data.access_token);
         set({ token: data.access_token, isAuthenticated: true });
@@ -96,7 +113,10 @@ export const useStore = create<AppState>((set, get) => ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, email, password })
         });
-        if (!response.ok) throw new Error('Falha no registro');
+        if (!response.ok) {
+             const errorData = await response.json().catch(() => ({}));
+             throw new Error(errorData.detail || 'Falha no registro');
+        }
         const data = await response.json();
         localStorage.setItem('token', data.access_token);
         set({ token: data.access_token, isAuthenticated: true });
@@ -110,7 +130,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   logout: () => {
     localStorage.removeItem('token');
+    localStorage.clear(); // Clear all data as requested
     set({ user: null, token: null, isAuthenticated: false, categories: [], transactions: [], recurringRules: [], reserves: [] });
+    // Force reload to clear any memory states if needed, or just redirect
+    window.location.hash = '#/login';
   },
 
   checkAuth: async () => {
@@ -118,19 +141,23 @@ export const useStore = create<AppState>((set, get) => ({
     if (!token) return;
 
     try {
-        const response = await fetch(`${API_URL}/auth/me`, {
+        const response = await authorizedFetch(`${API_URL}/auth/me`, {
             method: 'POST',
             headers: getAuthHeaders(token)
-        });
+        }, get().logout);
+
         if (!response.ok) {
-            get().logout();
-            return;
+             // If we get here, it wasn't a 401 (caught by authorizedFetch), but some other error
+             get().logout();
+             return;
         }
         const user = await response.json();
         set({ user, isAuthenticated: true });
         await get().fetchAllData();
     } catch (err) {
-        get().logout();
+        // If authorizedFetch throws 401, it calls logout.
+        // We catch here to avoid unhandled promise rejection.
+        console.error("Check auth failed", err);
     }
   },
 
@@ -141,11 +168,13 @@ export const useStore = create<AppState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const headers = getAuthHeaders(token);
+      const authFetch = (url: string) => authorizedFetch(url, { headers }, get().logout).then(r => r.json());
+
       const [cats, trans, rules, res] = await Promise.all([
-        fetch(`${API_URL}/categories`, { headers }).then(r => r.json()),
-        fetch(`${API_URL}/transactions`, { headers }).then(r => r.json()),
-        fetch(`${API_URL}/recurring_rules`, { headers }).then(r => r.json()),
-        fetch(`${API_URL}/reserves`, { headers }).then(r => r.json())
+        authFetch(`${API_URL}/categories`),
+        authFetch(`${API_URL}/transactions`),
+        authFetch(`${API_URL}/recurring_rules`),
+        authFetch(`${API_URL}/reserves`)
       ]);
       set({
         categories: cats,
@@ -163,11 +192,11 @@ export const useStore = create<AppState>((set, get) => ({
   addTransaction: async (t) => {
     try {
         const token = get().token;
-        const response = await fetch(`${API_URL}/transactions`, {
+        const response = await authorizedFetch(`${API_URL}/transactions`, {
             method: 'POST',
             headers: getAuthHeaders(token),
             body: JSON.stringify(t)
-        });
+        }, get().logout);
         if (!response.ok) throw new Error('Failed to add transaction');
         const newTransaction = await response.json();
         set((state) => ({
@@ -181,11 +210,11 @@ export const useStore = create<AppState>((set, get) => ({
   updateTransaction: async (id, updatedT) => {
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/transactions/${id}`, {
+          const response = await authorizedFetch(`${API_URL}/transactions/${id}`, {
               method: 'PUT',
               headers: getAuthHeaders(token),
               body: JSON.stringify(updatedT)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to update transaction');
           const savedTransaction = await response.json();
           set((state) => ({
@@ -201,10 +230,10 @@ export const useStore = create<AppState>((set, get) => ({
   deleteTransaction: async (id) => {
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/transactions/${id}`, {
+          const response = await authorizedFetch(`${API_URL}/transactions/${id}`, {
               method: 'DELETE',
               headers: getAuthHeaders(token)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to delete transaction');
           set((state) => ({
               transactions: state.transactions.filter(t => t.id !== id)
@@ -217,11 +246,11 @@ export const useStore = create<AppState>((set, get) => ({
   addCategory: async (c) => {
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/categories`, {
+          const response = await authorizedFetch(`${API_URL}/categories`, {
               method: 'POST',
               headers: getAuthHeaders(token),
               body: JSON.stringify(c)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to add category');
           const newCategory = await response.json();
           set((state) => ({
@@ -241,11 +270,11 @@ export const useStore = create<AppState>((set, get) => ({
 
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/categories/${id}`, {
+          const response = await authorizedFetch(`${API_URL}/categories/${id}`, {
               method: 'PUT',
               headers: getAuthHeaders(token),
               body: JSON.stringify(payload)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to update category');
           const savedCategory = await response.json();
           set((state) => ({
@@ -259,10 +288,10 @@ export const useStore = create<AppState>((set, get) => ({
   deleteCategory: async (id) => {
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/categories/${id}`, {
+          const response = await authorizedFetch(`${API_URL}/categories/${id}`, {
               method: 'DELETE',
               headers: getAuthHeaders(token)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to delete category');
           set((state) => ({
               categories: state.categories.filter(c => c.id !== id)
@@ -275,11 +304,11 @@ export const useStore = create<AppState>((set, get) => ({
   addRecurringRule: async (r) => {
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/recurring_rules`, {
+          const response = await authorizedFetch(`${API_URL}/recurring_rules`, {
               method: 'POST',
               headers: getAuthHeaders(token),
               body: JSON.stringify(r)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to add rule');
           const newRule = await response.json();
           set((state) => ({
@@ -293,11 +322,11 @@ export const useStore = create<AppState>((set, get) => ({
   addReserve: async (r) => {
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/reserves`, {
+          const response = await authorizedFetch(`${API_URL}/reserves`, {
               method: 'POST',
               headers: getAuthHeaders(token),
               body: JSON.stringify(r)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to add reserve');
           const newReserve = await response.json();
           set((state) => ({
@@ -316,11 +345,11 @@ export const useStore = create<AppState>((set, get) => ({
 
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/reserves/${id}`, {
+          const response = await authorizedFetch(`${API_URL}/reserves/${id}`, {
               method: 'PUT',
               headers: getAuthHeaders(token),
               body: JSON.stringify(payload)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to update reserve');
           const savedReserve = await response.json();
           set((state) => ({
@@ -334,10 +363,10 @@ export const useStore = create<AppState>((set, get) => ({
   deleteReserve: async (id) => {
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/reserves/${id}`, {
+          const response = await authorizedFetch(`${API_URL}/reserves/${id}`, {
               method: 'DELETE',
               headers: getAuthHeaders(token)
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to delete reserve');
           set((state) => ({
               reserves: state.reserves.filter(r => r.id !== id)
@@ -350,11 +379,11 @@ export const useStore = create<AppState>((set, get) => ({
   addReserveTransaction: async (reserveId, amount, type) => {
       try {
           const token = get().token;
-          const response = await fetch(`${API_URL}/reserves/${reserveId}/transactions`, {
+          const response = await authorizedFetch(`${API_URL}/reserves/${reserveId}/transactions`, {
               method: 'POST',
               headers: getAuthHeaders(token),
               body: JSON.stringify({ amount, type })
-          });
+          }, get().logout);
           if (!response.ok) throw new Error('Failed to add reserve transaction');
           const updatedReserve = await response.json();
           set((state) => ({
