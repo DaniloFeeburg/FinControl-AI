@@ -13,14 +13,20 @@ SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 # Note: tokenUrl is kept for reference, but we are switching to JSON body login
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-def hash_password(password):
+def validate_password_length(password: str) -> str:
+    if len(password.encode('utf-8')) > 72:
+        raise ValueError("Senha muito longa (máximo 72 bytes)")
+    return password
+
+def hash_password(password: str) -> str:
+    validate_password_length(password)
     return pwd_context.hash(password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):

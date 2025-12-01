@@ -87,7 +87,7 @@ O projeto possui um script Python automatizado para criar toda a estrutura de ta
    npm install
    ```
 
-2. Crie um arquivo `.env` na raiz com sua chave API:
+2. Crie um arquivo `.env` na raiz com sua chave API (ver `.env.example`):
    ```env
    VITE_API_KEY=sua_chave_aqui
    ```
@@ -96,6 +96,17 @@ O projeto possui um script Python automatizado para criar toda a estrutura de ta
    ```bash
    npm run dev
    ```
+
+---
+
+## 🔑 Usuário Demo
+
+Para testes rápidos, o sistema cria automaticamente um usuário de demonstração se executado em ambiente de desenvolvimento (ou quando `init_tables.py` é invocado).
+
+- **Email:** `demo@fincontrol.ai`
+- **Senha:** `demo123`
+
+> **Nota:** O sistema implementa isolamento estrito de dados (multitenancy lógico). Cada usuário vê apenas seus próprios dados (Categorias, Transações, Reservas, etc.), garantido pelo `user_id` em todas as tabelas e filtros automáticos no backend.
 
 ---
 
