@@ -16,6 +16,13 @@ export const Register: React.FC = () => {
     e.preventDefault();
     setError('');
 
+    // Validações básicas no frontend
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        setError('Por favor, insira um email válido.');
+        return;
+    }
+
     if (password !== confirmPassword) {
       setError('As senhas não coincidem.');
       return;
@@ -32,7 +39,10 @@ export const Register: React.FC = () => {
       await register(name, email, password);
       window.location.hash = '#/';
     } catch (err: any) {
-      setError(err.message || 'Erro ao criar conta. Tente novamente.');
+      // Mensagem de erro já tratada no store, mas garantimos fallback
+      let msg = err.message || 'Erro ao criar conta.';
+      if (msg === 'Failed to fetch') msg = 'Erro de conexão com o servidor.';
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
