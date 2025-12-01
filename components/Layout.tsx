@@ -1,5 +1,6 @@
 import React from 'react';
-import { LayoutDashboard, Receipt, Tags, PiggyBank, PieChart, Menu, X, Bot } from 'lucide-react';
+import { LayoutDashboard, Receipt, Tags, PiggyBank, PieChart, Menu, X, Bot, LogOut, User as UserIcon } from 'lucide-react';
+import { useStore } from '../store';
 
 interface NavItemProps {
   icon: React.ElementType;
@@ -29,12 +30,19 @@ const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, href, active, onCl
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [currentPath, setCurrentPath] = React.useState(window.location.hash || '#/');
+  const logout = useStore((state) => state.logout);
+  const user = useStore((state) => state.user);
 
   React.useEffect(() => {
     const handleHashChange = () => setCurrentPath(window.location.hash || '#/');
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  const handleLogout = () => {
+      logout();
+      window.location.hash = '#/'; // Will redirect to login via App.tsx logic
+  };
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 flex font-sans">
@@ -91,7 +99,27 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             />
           </nav>
 
-          <div className="pt-4 border-t border-zinc-800">
+          <div className="space-y-4 pt-4 border-t border-zinc-800">
+            {/* User Info */}
+            <div className="px-2 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400">
+                    <UserIcon size={16} />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                    <p className="text-sm font-medium text-white truncate">{user?.name || 'Usuário'}</p>
+                    <p className="text-xs text-zinc-500 truncate">{user?.email}</p>
+                </div>
+            </div>
+
+             {/* Logout Button */}
+            <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-colors text-zinc-400 hover:text-red-400 hover:bg-zinc-900"
+            >
+                <LogOut size={20} />
+                <span className="font-medium text-sm">Sair</span>
+            </button>
+
             <div className="px-4 py-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
               <div className="flex items-center gap-2 mb-2">
                 <Bot size={16} className="text-emerald-500" />

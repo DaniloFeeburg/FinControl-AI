@@ -1,11 +1,20 @@
 import { create } from 'zustand';
-import { Category, Transaction, RecurringRule, Reserve, ReserveTransaction } from './types';
+import { Category, Transaction, RecurringRule, Reserve, ReserveTransaction, User } from './types';
 
 // API URL - in production it will be relative, or we can use an env var
 // If the backend is on the same host/port (e.g. via Nginx proxy), use relative path.
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface AppState {
+  // Auth
+  user: User | null;
+  token: string | null;
+  isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => void;
+  checkAuth: () => Promise<void>;
+
   categories: Category[];
   transactions: Transaction[];
   recurringRules: RecurringRule[];
@@ -41,7 +50,17 @@ interface AppState {
   getAvailableBalance: () => number;
 }
 
+const getAuthHeaders = (token: string | null) => {
+    return {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+};
+
 export const useStore = create<AppState>((set, get) => ({
+  user: null,
+  token: localStorage.getItem('token'),
+  isAuthenticated: !!localStorage.getItem('token'),
   categories: [],
   transactions: [],
   recurringRules: [],
@@ -49,14 +68,84 @@ export const useStore = create<AppState>((set, get) => ({
   loading: false,
   error: null,
 
-  fetchAllData: async () => {
+  login: async (email, password) => {
     set({ loading: true, error: null });
     try {
+        const response = await fetch(`${API_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        if (!response.ok) throw new Error('Falha no login');
+        const data = await response.json();
+        localStorage.setItem('token', data.access_token);
+        set({ token: data.access_token, isAuthenticated: true });
+
+        await get().checkAuth();
+    } catch (err: any) {
+        set({ error: err.message, loading: false });
+        throw err;
+    }
+  },
+
+  register: async (name, email, password) => {
+    set({ loading: true, error: null });
+    try {
+        const response = await fetch(`${API_URL}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+        });
+        if (!response.ok) throw new Error('Falha no registro');
+        const data = await response.json();
+        localStorage.setItem('token', data.access_token);
+        set({ token: data.access_token, isAuthenticated: true });
+
+        await get().checkAuth();
+    } catch (err: any) {
+        set({ error: err.message, loading: false });
+        throw err;
+    }
+  },
+
+  logout: () => {
+    localStorage.removeItem('token');
+    set({ user: null, token: null, isAuthenticated: false, categories: [], transactions: [], recurringRules: [], reserves: [] });
+  },
+
+  checkAuth: async () => {
+    const token = get().token;
+    if (!token) return;
+
+    try {
+        const response = await fetch(`${API_URL}/auth/me`, {
+            method: 'POST',
+            headers: getAuthHeaders(token)
+        });
+        if (!response.ok) {
+            get().logout();
+            return;
+        }
+        const user = await response.json();
+        set({ user, isAuthenticated: true });
+        await get().fetchAllData();
+    } catch (err) {
+        get().logout();
+    }
+  },
+
+  fetchAllData: async () => {
+    const { isAuthenticated, token } = get();
+    if (!isAuthenticated || !token) return;
+
+    set({ loading: true, error: null });
+    try {
+      const headers = getAuthHeaders(token);
       const [cats, trans, rules, res] = await Promise.all([
-        fetch(`${API_URL}/categories`).then(r => r.json()),
-        fetch(`${API_URL}/transactions`).then(r => r.json()),
-        fetch(`${API_URL}/recurring_rules`).then(r => r.json()),
-        fetch(`${API_URL}/reserves`).then(r => r.json())
+        fetch(`${API_URL}/categories`, { headers }).then(r => r.json()),
+        fetch(`${API_URL}/transactions`, { headers }).then(r => r.json()),
+        fetch(`${API_URL}/recurring_rules`, { headers }).then(r => r.json()),
+        fetch(`${API_URL}/reserves`, { headers }).then(r => r.json())
       ]);
       set({
         categories: cats,
@@ -73,9 +162,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   addTransaction: async (t) => {
     try {
+        const token = get().token;
         const response = await fetch(`${API_URL}/transactions`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(token),
             body: JSON.stringify(t)
         });
         if (!response.ok) throw new Error('Failed to add transaction');
@@ -90,9 +180,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateTransaction: async (id, updatedT) => {
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/transactions/${id}`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getAuthHeaders(token),
               body: JSON.stringify(updatedT)
           });
           if (!response.ok) throw new Error('Failed to update transaction');
@@ -109,8 +200,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteTransaction: async (id) => {
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/transactions/${id}`, {
-              method: 'DELETE'
+              method: 'DELETE',
+              headers: getAuthHeaders(token)
           });
           if (!response.ok) throw new Error('Failed to delete transaction');
           set((state) => ({
@@ -123,9 +216,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   addCategory: async (c) => {
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/categories`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getAuthHeaders(token),
               body: JSON.stringify(c)
           });
           if (!response.ok) throw new Error('Failed to add category');
@@ -139,21 +233,17 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   updateCategory: async (id, updatedC) => {
-      // Note: Backend might need full object for PUT, but let's assume it handles partial or we merge.
-      // My backend implementation uses create schema which needs all fields.
-      // So I should fetch the category first or merge it in frontend.
-      // Since I have the state, I can merge it.
       const currentCategory = get().categories.find(c => c.id === id);
       if (!currentCategory) return;
 
       const merged = { ...currentCategory, ...updatedC };
-      // Remove id from merged if it's there, as backend expects Create schema
       const { id: _, ...payload } = merged;
 
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/categories/${id}`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getAuthHeaders(token),
               body: JSON.stringify(payload)
           });
           if (!response.ok) throw new Error('Failed to update category');
@@ -168,8 +258,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteCategory: async (id) => {
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/categories/${id}`, {
-              method: 'DELETE'
+              method: 'DELETE',
+              headers: getAuthHeaders(token)
           });
           if (!response.ok) throw new Error('Failed to delete category');
           set((state) => ({
@@ -182,9 +274,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   addRecurringRule: async (r) => {
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/recurring_rules`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getAuthHeaders(token),
               body: JSON.stringify(r)
           });
           if (!response.ok) throw new Error('Failed to add rule');
@@ -199,9 +292,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   addReserve: async (r) => {
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/reserves`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getAuthHeaders(token),
               body: JSON.stringify(r)
           });
           if (!response.ok) throw new Error('Failed to add reserve');
@@ -218,12 +312,13 @@ export const useStore = create<AppState>((set, get) => ({
       const currentReserve = get().reserves.find(r => r.id === id);
       if (!currentReserve) return;
       const merged = { ...currentReserve, ...updatedR };
-      const { id: _, history: __, ...payload } = merged; // Remove id and history
+      const { id: _, history: __, ...payload } = merged;
 
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/reserves/${id}`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getAuthHeaders(token),
               body: JSON.stringify(payload)
           });
           if (!response.ok) throw new Error('Failed to update reserve');
@@ -238,8 +333,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteReserve: async (id) => {
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/reserves/${id}`, {
-              method: 'DELETE'
+              method: 'DELETE',
+              headers: getAuthHeaders(token)
           });
           if (!response.ok) throw new Error('Failed to delete reserve');
           set((state) => ({
@@ -252,9 +349,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   addReserveTransaction: async (reserveId, amount, type) => {
       try {
+          const token = get().token;
           const response = await fetch(`${API_URL}/reserves/${reserveId}/transactions`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getAuthHeaders(token),
               body: JSON.stringify({ amount, type })
           });
           if (!response.ok) throw new Error('Failed to add reserve transaction');
