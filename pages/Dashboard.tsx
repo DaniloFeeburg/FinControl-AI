@@ -70,14 +70,20 @@ export const Dashboard: React.FC = () => {
 
 
   const handleAiAnalysis = async () => {
-    if (!process.env.API_KEY) {
-      setAiAnalysis("Chave de API não encontrada.");
-      return;
-    }
-
     setIsAnalyzing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Busca a chave API do backend
+      const configResponse = await fetch('/api/config');
+      if (!configResponse.ok) throw new Error('Failed to fetch config');
+      const config = await configResponse.json();
+      
+      if (!config.gemini_api_key || config.gemini_api_key === '') {
+        setAiAnalysis("Chave de API do Gemini não configurada no servidor.");
+        setIsAnalyzing(false);
+        return;
+      }
+
+      const ai = new GoogleGenAI({ apiKey: config.gemini_api_key });
       
       const financialContext = `
         Saldo Total: ${formatCurrency(currentBalance)}
