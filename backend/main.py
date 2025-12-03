@@ -14,6 +14,14 @@ app = FastAPI()
 def root():
     return {"message": "FinControl AI API is running"}
 
+@app.get("/config")
+def get_config():
+    """Endpoint para fornecer configurações públicas ao frontend"""
+    import os
+    return {
+        "gemini_api_key": os.getenv("GEMINI_API_KEY", "")
+    }
+
 # Allow CORS for frontend (assuming localhost or same origin)
 origins = [
     "http://localhost",
