@@ -31,7 +31,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
-      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest'
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest'
       - '--timeout=300'
       - '--memory=1Gi'
       - '--cpu=1'
@@ -49,3 +49,4 @@ options:
 
 images:
   - '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA'
+  
