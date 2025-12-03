@@ -95,7 +95,19 @@ export const Dashboard: React.FC = () => {
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Analise as finanças: ${financialContext}. Dê 2 dicas práticas e curtas sobre como otimizar o orçamento atual e atingir as reservas mais rápido. Responda em PT-BR.`,
+        contents: `Analise as finanças: ${financialContext}. 
+
+Forneça uma análise em formato de lista numerada com EXATAMENTE 3 recomendações práticas e objetivas.
+Cada recomendação deve ter:
+- Um título em negrito (máximo 6 palavras)
+- Uma explicação clara em 1-2 frases
+
+Exemplo de formato:
+1. **Título da Dica**: Explicação breve e prática.
+2. **Título da Dica**: Explicação breve e prática.
+3. **Título da Dica**: Explicação breve e prática.
+
+Responda APENAS em português do Brasil e siga EXATAMENTE este formato.`,
       });
 
       setAiAnalysis(response.text);
