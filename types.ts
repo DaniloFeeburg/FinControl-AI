@@ -1,6 +1,12 @@
 export type TransactionStatus = 'PAID' | 'PENDING';
 export type CategoryType = 'INCOME' | 'EXPENSE';
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+}
+
 export interface Category {
   id: string;
   name: string;
