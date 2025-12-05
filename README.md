@@ -58,9 +58,9 @@ O sistema oferece visualizações avançadas para análise financeira:
     *   **Objetivo:** Prever o saldo futuro com base no saldo atual e regras recorrentes.
     *   **Lógica:** O algoritmo projeta o saldo dia a dia para os próximos 6 meses.
     *   **Fatores Considerados:**
-        *   Saldo Inicial (Atual).
+        *   Saldo Inicial: Calculado considerando apenas transações realizadas até a data atual.
+        *   **Transações Futuras:** Receitas e Despesas cadastradas com data posterior à atual são incluídas na projeção no dia específico de seu vencimento.
         *   **Regras Recorrentes:** Receitas e Despesas fixas cadastradas são aplicadas automaticamente nos dias de vencimento (`BYMONTHDAY`).
-        *   **Gastos Variáveis Estimados:** O sistema aplica uma redução linear diária (ex: R$ 20,00/dia) para simular gastos cotidianos não previstos (alimentação, transporte, etc).
     *   **Visualização:** Gráfico de área mostrando a tendência de crescimento ou redução do patrimônio ao longo do tempo.
 
 *   **Gráfico de Receitas vs. Despesas (6 Meses):**
