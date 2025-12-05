@@ -50,6 +50,30 @@ Uma ferramenta poderosa para separar dinheiro do saldo principal para objetivos 
 *   **Impacto no Saldo:**
     *   **Saldo Disponível:** Calculado como `Saldo Total - Total em Reservas`. Isso ajuda o usuário a saber quanto dinheiro realmente pode gastar sem comprometer suas metas.
 
+### 6. Relatórios e Gráficos
+
+O sistema oferece visualizações avançadas para análise financeira:
+
+*   **Fluxo de Caixa Projetado (180 Dias):**
+    *   **Objetivo:** Prever o saldo futuro com base no saldo atual e regras recorrentes.
+    *   **Lógica:** O algoritmo projeta o saldo dia a dia para os próximos 6 meses.
+    *   **Fatores Considerados:**
+        *   Saldo Inicial (Atual).
+        *   **Regras Recorrentes:** Receitas e Despesas fixas cadastradas são aplicadas automaticamente nos dias de vencimento (`BYMONTHDAY`).
+        *   **Gastos Variáveis Estimados:** O sistema aplica uma redução linear diária (ex: R$ 20,00/dia) para simular gastos cotidianos não previstos (alimentação, transporte, etc).
+    *   **Visualização:** Gráfico de área mostrando a tendência de crescimento ou redução do patrimônio ao longo do tempo.
+
+*   **Gráfico de Receitas vs. Despesas (6 Meses):**
+    *   **Objetivo:** Comparar o desempenho financeiro mês a mês.
+    *   **Janela de Tempo:** Últimos 6 meses (incluindo o mês atual).
+    *   **Agregação:** As transações são agrupadas por mês e separadas em:
+        *   **Receitas (Income):** Soma de transações positivas.
+        *   **Despesas (Expense):** Soma do valor absoluto de transações negativas.
+    *   **Visualização:** Gráfico de barras lado a lado para fácil comparação visual de superávit ou déficit mensal.
+
+*   **Análise Inteligente (IA):**
+    *   Integração opcional com Google Gemini para gerar insights financeiros personalizados baseados nos dados atuais do usuário (Saldo, Gastos, Metas).
+
 ## 📐 Cálculos e Regras de Negócio
 
 ### Cálculo de Saldos
