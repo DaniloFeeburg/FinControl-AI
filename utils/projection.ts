@@ -1,4 +1,4 @@
-import { DailyProjection, RecurringRule } from "../types";
+import { DailyProjection, RecurringRule, Transaction } from "../types";
 
 // Helper to format currency
 export const formatCurrency = (amount: number) => {
@@ -15,35 +15,112 @@ const getDayFromRRule = (rrule: string): number | null => {
 };
 
 export const calculateProjection = (
-  currentBalance: number,
+  transactions: Transaction[],
   rules: RecurringRule[],
   daysToProject: number = 180
 ): DailyProjection[] => {
   const projections: DailyProjection[] = [];
-  let runningBalance = currentBalance;
-  const startDate = new Date();
 
-  // Estimativa simples de "Gastos Variáveis" (ex: R$ 20/dia decaimento linear para comida/diversos)
-  const DAILY_VARIABLE_SPEND = -2000; 
+  // Calculate starting balance (transactions up to today)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Filter out future transactions for the starting balance
+  // We assume the Dashboard "currentBalance" was the sum of ALL transactions.
+  // Here we want to start from the "Real" balance as of NOW, and then project future events.
+  const startingBalance = transactions.reduce((acc, t) => {
+    const tDate = new Date(t.date);
+    // Include if date is today or in the past
+    // Note: t.date is usually YYYY-MM-DD string, so new Date(t.date) is UTC midnight.
+    // We should compare strictly.
+    if (tDate <= today) {
+        return acc + t.amount;
+    }
+    return acc;
+  }, 0);
+
+  let runningBalance = startingBalance;
+
+  // Create a map of future transactions for quick lookup
+  const futureTransactionsMap: Record<string, number> = {};
+  transactions.forEach(t => {
+      const tDate = new Date(t.date);
+      // If strictly in future
+      if (tDate > today) {
+          const key = t.date; // YYYY-MM-DD
+          futureTransactionsMap[key] = (futureTransactionsMap[key] || 0) + t.amount;
+      }
+  });
+
+  // Start projecting from tomorrow? Or today?
+  // Usually projection starts today. If we already included today's txns in startingBalance,
+  // we shouldn't add them again.
+  // The loop starts at i=0 (Today).
+
+  // RE-EVALUATION:
+  // If i=0 is Today.
+  // startingBalance includes Today's txns.
+  // loop i=0 processes Today again? No.
+  // We need to be careful.
+
+  // Let's adhere to:
+  // startingBalance = sum(t where t.date <= today)
+  // Loop i=0 is Today.
+  //    Check for Recurring Rules that apply TODAY.
+  //    But if a Recurring Rule applied Today, shouldn't it already be a Transaction?
+  //    Usually, Recurring Rules generate Transactions.
+  //    However, in this app, Recurring Rules seem to be "virtual" (just for projection)
+  //    UNLESS the user manually added the transaction.
+  //    If the user manually added the transaction for Today, it's in `startingBalance`.
+  //    If we also apply the Rule for Today, we double count.
+
+  //    Strategy:
+  //    Project Future only.
+  //    i=0 (Today): Just show the startingBalance.
+  //    i=1 (Tomorrow): Check Rules & Future Txns.
 
   for (let i = 0; i <= daysToProject; i++) {
-    const currentDate = new Date(startDate);
-    currentDate.setDate(startDate.getDate() + i);
+    const currentDate = new Date(today);
+    currentDate.setDate(today.getDate() + i);
     const dayOfMonth = currentDate.getDate();
-    const isoDate = currentDate.toISOString().split('T')[0];
+    // Helper to get YYYY-MM-DD in local time (or consistent with transaction dates)
+    // transactions use YYYY-MM-DD strings.
+    // toISOString() uses UTC. We need to be careful with timezone offsets.
+    // Simple approach: construct string manually or use a library.
+    // Since we don't have date-fns, let's use a safe format.
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const day = String(currentDate.getDate()).padStart(2, '0');
+    const isoDate = `${year}-${month}-${day}`;
 
-    // Apply variable spend
-    runningBalance += DAILY_VARIABLE_SPEND;
+    // Skip applying rules/future txns for Today (i=0)
+    // because we assume startingBalance is accurate for "Now".
+    // AND we assume future txns/rules start from tomorrow.
+    // UNLESS the user wants to see "What will happen later today?".
+    // Given the prompt "adjust cash flow...", simpler is safer:
+    // Start applying changes from i=0?
+    // If I have a rule for Today that hasn't been paid yet (no transaction), it should appear.
+    // But we don't know if it was paid.
+    // Assumption: If it's a projection, we usually look forward.
+    // Let's apply rules/future txns starting from Tomorrow (i=1).
+    // But the chart usually wants to start at x=0.
 
-    // Apply recurring rules
-    rules.forEach(rule => {
-      if (!rule.active) return;
-      const ruleDay = getDayFromRRule(rule.rrule);
-      
-      if (ruleDay !== null && ruleDay === dayOfMonth) {
-        runningBalance += rule.amount;
-      }
-    });
+    if (i > 0) {
+        // 1. Future Transactions (Variables/Fixed explicitly registered)
+        if (futureTransactionsMap[isoDate]) {
+            runningBalance += futureTransactionsMap[isoDate];
+        }
+
+        // 2. Recurring Rules
+        rules.forEach(rule => {
+            if (!rule.active) return;
+            const ruleDay = getDayFromRRule(rule.rrule);
+
+            if (ruleDay !== null && ruleDay === dayOfMonth) {
+                runningBalance += rule.amount;
+            }
+        });
+    }
 
     projections.push({
       date: isoDate,

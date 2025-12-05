@@ -10,7 +10,7 @@ export const Dashboard: React.FC = () => {
   const { getBalance, getAvailableBalance, recurringRules, transactions, categories, reserves } = useStore();
   const currentBalance = getBalance();
   const availableBalance = getAvailableBalance();
-  const projectionData = calculateProjection(currentBalance, recurringRules, 180);
+  const projectionData = calculateProjection(transactions, recurringRules, 180);
   
   // Projected balance in 30 days
   const projected30Days = projectionData[29]?.balance || 0;
