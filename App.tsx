@@ -3,6 +3,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Transactions } from './pages/Transactions';
 import { Categories } from './pages/Categories';
+import { RecurringRules } from './pages/RecurringRules';
 import { Reserves } from './pages/Reserves';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
@@ -62,6 +63,9 @@ const Router = () => {
       break;
     case '#/categories':
       Component = Categories;
+      break;
+    case '#/recurring':
+      Component = RecurringRules;
       break;
     case '#/reserves':
       Component = Reserves;
