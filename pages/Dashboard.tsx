@@ -8,15 +8,79 @@ import { GoogleGenAI } from '@google/genai';
 
 export const Dashboard: React.FC = () => {
   const { getBalance, getAvailableBalance, recurringRules, transactions, categories, reserves } = useStore();
-  const currentBalance = getBalance();
-  const availableBalance = getAvailableBalance();
+
+  // Calculate Monthly Values
+  const currentMonthTransactions = useMemo(() => {
+    const now = new Date();
+    return transactions.filter(t => {
+      const d = new Date(t.date);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+  }, [transactions]);
+
+  const monthlyBalance = useMemo(() => {
+    return currentMonthTransactions.reduce((acc, t) => acc + t.amount, 0);
+  }, [currentMonthTransactions]);
+
+  // For "Available to Spend", ideally we would subtract monthly reserve contributions.
+  // Since we don't have reserve history, we'll use monthlyBalance as the best proxy for "Monthly Cash Flow".
+  // If the user wants "Total Net Worth" to be "Monthly Balance", then "Available" (Net - Reserves)
+  // without reserve info is just "Net".
+
+  // However, we should preserve the original variable names for the rest of the file if they are used elsewhere?
+  // checking usages:
+  // currentBalance used in: KPI card, isGrowing comparison, AI context.
+  // availableBalance used in: KPI card, Reserve KPI (currentBalance - availableBalance), AI context.
+
+  // The user specifically asked to change what is *displayed* in the cards.
+  // So I will create specific variables for the cards, but keep the global ones for other contexts?
+  // "Altere para que seja exibido nos cards... apenas os valores referentes ao mês atual"
+  // It implies the cards should show monthly data.
+  // AI Context: "Saldo Total: {currentBalance}" -> should this also be monthly? User didn't specify.
+  // Reserve KPI: "Total em Reservas" -> usually accumulated. Card calculation: {currentBalance - availableBalance}.
+  // If I change currentBalance/availableBalance to monthly, (MonthlyBal - MonthlyAvailable) = 0 (if equal).
+  // But Reserve Card should show TOTAL reserves.
+  // So I must calculate TOTAL reserves separately or use the store `reserves` array.
+  // The Reserve Card uses `{formatCurrency(currentBalance - availableBalance)}`.
+  // Original: (TotalBal) - (TotalBal - TotalReserves) = TotalReserves.
+  // New: If I change the variables, I must update the Reserve Card calculation to use `reserves` directly.
+
+  const totalReserves = reserves.reduce((acc, r) => acc + r.current_amount, 0);
+
+  // Original global values (still useful for "Total Reserves" card logic if we want to be explicit)
+  // But I can just use totalReserves.
+
+  const currentBalance = monthlyBalance; // For the first card
+  const availableBalance = monthlyBalance; // For the second card (best effort)
+
+  // Wait, if I change 'currentBalance' variable, it affects 'isGrowing' and 'aiAnalysis'.
+  // isGrowing compares projected30Days vs currentBalance. Projected is future.
+  // If currentBalance is now just 1 month, comparing it to a 30-day projection (which is cumulative balance) is apples vs oranges.
+  // But 'projectionData' starts from 'currentBalance'?
+  // calculateProjection(transactions, ...) usually calculates absolute balance over time.
+  // Let's check calculateProjection in utils/projection.ts.
+
+  // If I change the display in the cards, I should create NEW variables for the cards
+  // and keep 'currentBalance' as the true total balance for other logic?
+  // The user request is "display in the cards".
+
+  const trueTotalBalance = getBalance();
+  const trueAvailableBalance = getAvailableBalance();
+
   const projectionData = calculateProjection(transactions, recurringRules, 180);
   
   // Projected balance in 30 days
   const projected30Days = projectionData[29]?.balance || 0;
-  const isGrowing = projected30Days > currentBalance;
+  const isGrowing = projected30Days > trueTotalBalance;
 
-  // Gemini State
+  // ... (rest of the file) ...
+
+  // In the JSX:
+  // Card 1: {formatCurrency(currentBalance)} -> change to {formatCurrency(monthlyBalance)}
+  // Card 2: {formatCurrency(availableBalance)} -> change to {formatCurrency(monthlyBalance)} (or monthlyAvailable if I had it)
+  // Card 3: {formatCurrency(currentBalance - availableBalance)} -> This was a hack to get reserves.
+  //         I should change it to {formatCurrency(totalReserves)}.
+
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -86,8 +150,8 @@ export const Dashboard: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: config.gemini_api_key });
       
       const financialContext = `
-        Saldo Total: ${formatCurrency(currentBalance)}
-        Disponível (Líquido): ${formatCurrency(availableBalance)}
+        Saldo Total: ${formatCurrency(trueTotalBalance)}
+        Disponível (Líquido): ${formatCurrency(trueAvailableBalance)}
         Gasto Mensal Médio: ${formatCurrency(monthlyComparison.reduce((acc, m) => acc + m.expense, 0) / 6)}
         Maiores Gastos (Categorias): ${expensesByCategory.slice(0,3).map(c => c.name).join(', ')}
         Metas de Reserva: ${reserves.length} ativas
@@ -174,13 +238,13 @@ Responda APENAS em português do Brasil e siga EXATAMENTE este formato.`,
             <span className="text-sm font-medium text-zinc-400">Patrimônio Total</span>
           </div>
           <div className="text-3xl font-bold text-white mb-1">
-            {formatCurrency(currentBalance)}
+            {formatCurrency(monthlyBalance)}
           </div>
           <div className="flex items-center gap-2 text-xs">
              <span className="text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded flex items-center">
                 <ArrowUpRight size={12} className="mr-1"/> Atual
              </span>
-             <span className="text-zinc-500">Todos os saldos somados</span>
+             <span className="text-zinc-500">Saldo deste mês</span>
           </div>
         </Card>
 
@@ -192,10 +256,10 @@ Responda APENAS em português do Brasil e siga EXATAMENTE este formato.`,
             <span className="text-sm font-medium text-zinc-400">Disponível para Gastar</span>
           </div>
           <div className="text-3xl font-bold text-emerald-400 mb-1">
-            {formatCurrency(availableBalance)}
+            {formatCurrency(monthlyBalance)}
           </div>
           <div className="flex items-center gap-2 text-xs">
-             <span className="text-zinc-500">Livre de Reservas</span>
+             <span className="text-zinc-500">Baseado no mês atual</span>
           </div>
         </Card>
 
@@ -207,7 +271,7 @@ Responda APENAS em português do Brasil e siga EXATAMENTE este formato.`,
             <span className="text-sm font-medium text-zinc-400">Total em Reservas</span>
           </div>
           <div className="text-3xl font-bold text-blue-400 mb-1">
-            {formatCurrency(currentBalance - availableBalance)}
+            {formatCurrency(totalReserves)}
           </div>
           <div className="flex items-center gap-2 text-xs">
              <span className="text-zinc-500">{reserves.length} metas ativas</span>
