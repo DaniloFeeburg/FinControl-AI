@@ -42,11 +42,54 @@ export const Dashboard: React.FC = () => {
 
   const totalReserves = reserves.reduce((acc, r) => acc + r.current_amount, 0);
 
-  // Card 1: Patrimônio Total -> Shows Monthly Income (as per latest interpretation of "Consider only income")
-  const card1Value = monthlyIncome;
+  // --- METRICS CALCULATION ---
 
-  // Card 2: Disponível para Gastar -> Monthly Balance (Income - Expense)
-  const card2Value = monthlyBalance;
+  // 1. Economia do Mês (Diferença mês atual vs anterior)
+  // Calculate previous month balance
+  const previousMonthDate = useMemo(() => {
+    const d = new Date(selectedDate);
+    d.setMonth(d.getMonth() - 1);
+    return d;
+  }, [selectedDate]);
+
+  const previousMonthBalance = useMemo(() => {
+    const prevMonthTransactions = transactions.filter(t => {
+      const d = new Date(t.date);
+      return d.getMonth() === previousMonthDate.getMonth() && d.getFullYear() === previousMonthDate.getFullYear();
+    });
+    const income = prevMonthTransactions.reduce((acc, t) => t.amount > 0 ? acc + t.amount : acc, 0);
+    const expense = prevMonthTransactions.reduce((acc, t) => t.amount < 0 ? acc + Math.abs(t.amount) : acc, 0);
+    return income - expense;
+  }, [transactions, previousMonthDate]);
+
+  const monthSavingsDiff = monthlyBalance - previousMonthBalance;
+
+  // 2. Burn Rate (Gasto médio diário no mês atual)
+  // If current month is strictly in the past, use days in month. If it's *now*, use days elapsed so far?
+  // Standard Burn Rate is often monthly, but request says "por dia".
+  const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
+  // If selected month is current month, maybe divide by current day?
+  // Let's stick to simple "Total Expenses / Days in Month" to project average daily burn for the WHOLE month context,
+  // OR "Total Expenses / Days passed" if it's current month.
+  // Let's use days passed if it's current month, otherwise days in month.
+  const isCurrentMonthReal = new Date().getMonth() === selectedDate.getMonth() && new Date().getFullYear() === selectedDate.getFullYear();
+  const daysElapsed = isCurrentMonthReal ? new Date().getDate() : daysInMonth;
+
+  const burnRateDaily = daysElapsed > 0 ? monthlyExpenses / daysElapsed : 0;
+
+  // 3. Dias até Zero
+  // Projection: Current Total Balance (Sum of ALL transactions ever? Or just monthly balance?)
+  // Usually "Runway" is based on Total Cash / Burn Rate.
+  // Let's calculate Total Wallet Balance first.
+  const totalWalletBalance = useMemo(() => {
+      return transactions.reduce((acc, t) => acc + t.amount, 0);
+  }, [transactions]);
+
+  const daysToZero = burnRateDaily > 0 ? totalWalletBalance / burnRateDaily : 999;
+  // If balance is negative, it's 0.
+
+  // 4. Taxa de Poupança (% da receita que sobra)
+  const savingsRate = monthlyIncome > 0 ? (monthlyBalance / monthlyIncome) * 100 : 0;
 
   const projectionData = calculateProjection(transactions, recurringRules, 180);
 
@@ -208,52 +251,71 @@ Responda APENAS em português do Brasil e siga EXATAMENTE este formato.`,
       )}
 
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Economia do Mês */}
         <Card className="p-6 relative overflow-hidden">
           <div className="absolute right-0 top-0 p-4 opacity-5">
               <Wallet size={100} />
           </div>
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-zinc-400">Patrimônio Total</span>
+            <span className="text-sm font-medium text-zinc-400">Economia do Mês</span>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">
-            {formatCurrency(card1Value)}
+          <div className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(monthSavingsDiff)}
           </div>
           <div className="flex items-center gap-2 text-xs">
-             <span className="text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded flex items-center">
-                <ArrowUpRight size={12} className="mr-1"/> Atual
+             <span className={`${monthSavingsDiff >= 0 ? 'text-emerald-500' : 'text-red-500'} flex items-center`}>
+                {monthSavingsDiff >= 0 ? <ArrowUpRight size={12} className="mr-1"/> : <ArrowDownLeft size={12} className="mr-1"/>}
+                vs mês anterior
              </span>
-             <span className="text-zinc-500">Receitas do mês selecionado</span>
           </div>
         </Card>
 
+        {/* Card 2: Burn Rate */}
         <Card className="p-6 relative overflow-hidden">
           <div className="absolute right-0 top-0 p-4 opacity-5">
-              <Lock size={100} />
+              <Activity size={100} />
           </div>
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-zinc-400">Disponível para Gastar</span>
+            <span className="text-sm font-medium text-zinc-400">Burn Rate (Dia)</span>
           </div>
-          <div className="text-3xl font-bold text-emerald-400 mb-1">
-            {formatCurrency(card2Value)}
+          <div className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(burnRateDaily)}
           </div>
           <div className="flex items-center gap-2 text-xs">
-             <span className="text-zinc-500">Saldo líquido do mês</span>
+             <span className="text-zinc-500">Média diária de gastos</span>
           </div>
         </Card>
 
+        {/* Card 3: Dias até Zero */}
+        <Card className="p-6 relative overflow-hidden">
+          <div className="absolute right-0 top-0 p-4 opacity-5">
+              <TrendingUp size={100} />
+          </div>
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-zinc-400">Dias até Zero</span>
+          </div>
+          <div className={`text-2xl font-bold mb-1 ${daysToZero < 30 ? 'text-red-400' : 'text-emerald-400'}`}>
+            {daysToZero >= 999 ? '∞' : Math.floor(daysToZero)} dias
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+             <span className="text-zinc-500">Com base no saldo atual</span>
+          </div>
+        </Card>
+
+        {/* Card 4: Taxa de Poupança */}
         <Card className="p-6 relative overflow-hidden">
           <div className="absolute right-0 top-0 p-4 opacity-5">
               <Target size={100} />
           </div>
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-zinc-400">Total em Reservas</span>
+            <span className="text-sm font-medium text-zinc-400">Taxa de Poupança</span>
           </div>
-          <div className="text-3xl font-bold text-blue-400 mb-1">
-            {formatCurrency(totalReserves)}
+          <div className={`text-2xl font-bold mb-1 ${savingsRate < 20 ? 'text-yellow-400' : 'text-blue-400'}`}>
+            {savingsRate.toFixed(1)}%
           </div>
           <div className="flex items-center gap-2 text-xs">
-             <span className="text-zinc-500">{reserves.length} metas ativas</span>
+             <span className="text-zinc-500">% da receita economizada</span>
           </div>
         </Card>
       </div>

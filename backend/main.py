@@ -5,10 +5,25 @@ from typing import List, Optional
 from pydantic import BaseModel
 from . import models, schemas, crud, auth
 from .database import engine, get_db
+from contextlib import asynccontextmanager
+import asyncio
+from .scheduler import run_scheduler
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Run scheduler immediately (and maybe loop in background)
+    # For now, just run once on startup as "daily" simulation if container restarts often
+    # OR start a background task loop
+    try:
+        run_scheduler()
+    except Exception as e:
+        print(f"Scheduler error on startup: {e}")
+    yield
+    # Shutdown
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 def root():

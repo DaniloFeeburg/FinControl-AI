@@ -33,6 +33,9 @@ export interface RecurringRule {
   description: string;
   rrule: string; // Simplified for demo: "FREQ=MONTHLY;BYMONTHDAY=5"
   active: boolean;
+  auto_create?: boolean;
+  last_execution?: string | null;
+  next_execution?: string | null;
 }
 
 export interface ReserveTransaction {

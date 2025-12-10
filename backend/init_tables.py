@@ -82,6 +82,17 @@ def init_db():
                 if inspector.has_table(table):
                     check_and_migrate_table(conn, table, demo_user_id)
 
+            # Migrate recurring_rules (auto_create, last_execution, next_execution)
+            inspector = inspect(conn)
+            if inspector.has_table("recurring_rules"):
+                cols = [c['name'] for c in inspector.get_columns("recurring_rules")]
+                if "auto_create" not in cols:
+                    print("Migrating recurring_rules: Adding auto_create, last_execution, next_execution...")
+                    conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN auto_create BOOLEAN DEFAULT FALSE"))
+                    conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN last_execution VARCHAR"))
+                    conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN next_execution VARCHAR"))
+                    conn.commit()
+
     except Exception as e:
         print(f"Error initializing/migrating data: {e}")
         # Importante: não crashar o container se a migração falhar parcialmente,
