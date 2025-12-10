@@ -43,13 +43,18 @@ export const RecurringRules: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="text-right">
+        <div className="text-right flex flex-col items-end gap-1">
           <p className={`font-mono font-bold ${isExpense ? 'text-red-400' : 'text-emerald-400'}`}>
             {formatCurrency(Math.abs(rule.amount))}
           </p>
-          <Badge variant={rule.active ? 'success' : 'neutral'}>
-            {rule.active ? 'Ativo' : 'Inativo'}
-          </Badge>
+          <div className="flex gap-2">
+            {rule.auto_create && (
+                <Badge variant="warning">Auto</Badge>
+            )}
+            <Badge variant={rule.active ? 'success' : 'neutral'}>
+                {rule.active ? 'Ativo' : 'Inativo'}
+            </Badge>
+          </div>
         </div>
       </div>
     );
