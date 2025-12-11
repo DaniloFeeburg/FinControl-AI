@@ -7,21 +7,15 @@ from . import models, schemas, crud, auth
 from .database import engine, get_db
 from contextlib import asynccontextmanager
 import asyncio
-from .scheduler import run_scheduler
+from .scheduler import start_scheduler_loop
 
 models.Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Run scheduler immediately (and maybe loop in background)
-    # For now, just run once on startup as "daily" simulation if container restarts often
-    # OR start a background task loop
-    try:
-        run_scheduler()
-    except Exception as e:
-        print(f"Scheduler error on startup: {e}")
+    # Start the scheduler loop in the background
+    asyncio.create_task(start_scheduler_loop())
     yield
-    # Shutdown
 
 app = FastAPI(lifespan=lifespan)
 
