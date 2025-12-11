@@ -132,39 +132,6 @@ export const Categories: React.FC = () => {
                           Custo Fixo / Recorrente
                       </label>
 
-                      {isFixed && !editId && (
-                        <div className="p-3 bg-zinc-950/50 rounded space-y-3 border border-zinc-800">
-                           <p className="text-xs text-zinc-500 font-medium uppercase">Configurar Recorrência</p>
-                           <Input
-                              type="number"
-                              placeholder="Valor Estimado"
-                              value={recurrenceAmount}
-                              onChange={e => setRecurrenceAmount(e.target.value)}
-                              required={isFixed}
-                           />
-                           <div className="flex gap-2 items-center">
-                               <span className="text-sm text-zinc-400">Dia do mês:</span>
-                               <Input
-                                  type="number"
-                                  min="1"
-                                  max="31"
-                                  value={recurrenceDay}
-                                  onChange={e => setRecurrenceDay(e.target.value)}
-                                  className="w-20"
-                               />
-                           </div>
-                           <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={autoCreate}
-                                onChange={e => setAutoCreate(e.target.checked)}
-                                className="rounded bg-zinc-950 border-zinc-800"
-                              />
-                              Criar lançamentos automaticamente
-                           </label>
-                        </div>
-                      )}
-
                       <Button type="submit" className="w-full">{editId ? 'Atualizar' : 'Criar Categoria'}</Button>
                   </form>
               </Card>
