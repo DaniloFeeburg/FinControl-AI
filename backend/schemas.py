@@ -60,7 +60,7 @@ class Category(CategoryBase):
         from_attributes = True
 
 class TransactionBase(BaseModel):
-    category_id: str
+    category_id: Optional[str] = None
     amount: float
     date: str
     description: str
@@ -78,7 +78,7 @@ class Transaction(TransactionBase):
         from_attributes = True
 
 class RecurringRuleBase(BaseModel):
-    category_id: str
+    category_id: Optional[str] = None
     amount: float
     description: str
     rrule: str
