@@ -32,7 +32,7 @@ interface AppState {
   deleteTransaction: (id: string) => Promise<void>;
 
   // Categories
-  addCategory: (c: Omit<Category, 'id'>) => Promise<void>;
+  addCategory: (c: Omit<Category, 'id'>) => Promise<Category | undefined>;
   updateCategory: (id: string, c: Partial<Omit<Category, 'id'>>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
 
@@ -256,8 +256,10 @@ export const useStore = create<AppState>((set, get) => ({
           set((state) => ({
               categories: [...state.categories, newCategory]
           }));
+          return newCategory;
       } catch (err) {
           console.error(err);
+          return undefined;
       }
   },
 

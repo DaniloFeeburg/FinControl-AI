@@ -6,7 +6,7 @@ import { Repeat, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { Category } from '../types';
 
 export const Categories: React.FC = () => {
-  const { categories, recurringRules, addCategory, updateCategory, deleteCategory } = useStore();
+  const { categories, recurringRules, addCategory, updateCategory, deleteCategory, addRecurringRule } = useStore();
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   
@@ -16,11 +16,19 @@ export const Categories: React.FC = () => {
   const [color, setColor] = useState('#3b82f6');
   const [isFixed, setIsFixed] = useState(false);
 
+  // Recurrence Fields
+  const [recurrenceAmount, setRecurrenceAmount] = useState('');
+  const [recurrenceDay, setRecurrenceDay] = useState('5');
+  const [autoCreate, setAutoCreate] = useState(true);
+
   const resetForm = () => {
     setName('');
     setType('EXPENSE');
     setColor('#3b82f6');
     setIsFixed(false);
+    setRecurrenceAmount('');
+    setRecurrenceDay('5');
+    setAutoCreate(true);
     setEditId(null);
     setIsEditing(false);
   };
@@ -40,7 +48,7 @@ export const Categories: React.FC = () => {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload = {
         name,
@@ -51,9 +59,25 @@ export const Categories: React.FC = () => {
     };
 
     if (editId) {
-        updateCategory(editId, payload);
+        await updateCategory(editId, payload);
     } else {
-        addCategory(payload);
+        const newCat = await addCategory(payload);
+
+        // If fixed and we have recurrence data, create the rule
+        if (newCat && isFixed && recurrenceAmount) {
+            const amountVal = parseFloat(recurrenceAmount);
+            // If expense, ensure negative. If income, ensure positive.
+            const finalAmount = type === 'EXPENSE' ? -Math.abs(amountVal) : Math.abs(amountVal);
+
+            await addRecurringRule({
+                category_id: newCat.id,
+                description: newCat.name,
+                amount: finalAmount,
+                rrule: `FREQ=MONTHLY;BYMONTHDAY=${recurrenceDay}`,
+                active: true,
+                auto_create: autoCreate
+            });
+        }
     }
     resetForm();
   };
@@ -107,6 +131,40 @@ export const Categories: React.FC = () => {
                           />
                           Custo Fixo / Recorrente
                       </label>
+
+                      {isFixed && !editId && (
+                        <div className="p-3 bg-zinc-950/50 rounded space-y-3 border border-zinc-800">
+                           <p className="text-xs text-zinc-500 font-medium uppercase">Configurar Recorrência</p>
+                           <Input
+                              type="number"
+                              placeholder="Valor Estimado"
+                              value={recurrenceAmount}
+                              onChange={e => setRecurrenceAmount(e.target.value)}
+                              required={isFixed}
+                           />
+                           <div className="flex gap-2 items-center">
+                               <span className="text-sm text-zinc-400">Dia do mês:</span>
+                               <Input
+                                  type="number"
+                                  min="1"
+                                  max="31"
+                                  value={recurrenceDay}
+                                  onChange={e => setRecurrenceDay(e.target.value)}
+                                  className="w-20"
+                               />
+                           </div>
+                           <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={autoCreate}
+                                onChange={e => setAutoCreate(e.target.checked)}
+                                className="rounded bg-zinc-950 border-zinc-800"
+                              />
+                              Criar lançamentos automaticamente
+                           </label>
+                        </div>
+                      )}
+
                       <Button type="submit" className="w-full">{editId ? 'Atualizar' : 'Criar Categoria'}</Button>
                   </form>
               </Card>
