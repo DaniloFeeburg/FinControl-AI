@@ -38,6 +38,8 @@ interface AppState {
 
   // Rules
   addRecurringRule: (r: Omit<RecurringRule, 'id'>) => Promise<void>;
+  updateRecurringRule: (id: string, r: Partial<Omit<RecurringRule, 'id'>>) => Promise<void>;
+  deleteRecurringRule: (id: string) => Promise<void>;
 
   // Reserves
   addReserve: (r: Omit<Reserve, 'id' | 'history'>) => Promise<void>;
@@ -319,6 +321,50 @@ export const useStore = create<AppState>((set, get) => ({
       } catch (err) {
           console.error(err);
       }
+  },
+
+  updateRecurringRule: async (id, updatedR) => {
+    const currentRule = get().recurringRules.find(r => r.id === id);
+    if (!currentRule) return;
+
+    const merged = { ...currentRule, ...updatedR };
+    const { id: _, ...payload } = merged;
+
+    try {
+      const token = get().token;
+      const response = await authorizedFetch(`${API_URL}/recurring_rules/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(payload)
+      }, get().logout);
+
+      if (!response.ok) throw new Error('Failed to update rule');
+      const savedRule = await response.json();
+
+      set((state) => ({
+        recurringRules: state.recurringRules.map(r => r.id === id ? savedRule : r)
+      }));
+    } catch (err) {
+      console.error(err);
+    }
+  },
+
+  deleteRecurringRule: async (id) => {
+    try {
+      const token = get().token;
+      const response = await authorizedFetch(`${API_URL}/recurring_rules/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token)
+      }, get().logout);
+
+      if (!response.ok) throw new Error('Failed to delete rule');
+
+      set((state) => ({
+        recurringRules: state.recurringRules.filter(r => r.id !== id)
+      }));
+    } catch (err) {
+      console.error(err);
+    }
   },
 
   addReserve: async (r) => {

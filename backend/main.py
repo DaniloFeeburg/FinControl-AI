@@ -117,6 +117,48 @@ def read_recurring_rules(db: Session = Depends(get_db), current_user: schemas.Us
 def create_recurring_rule(rule: schemas.RecurringRuleCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
     return crud.create_recurring_rule(db, rule, user_id=current_user.id)
 
+# PUT - Atualizar Regra Recorrente
+@app.put("/recurring_rules/{rule_id}", response_model=schemas.RecurringRule)
+def update_recurring_rule(
+    rule_id: str,
+    rule: schemas.RecurringRuleCreate,
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    db_rule = db.query(models.RecurringRule).filter(
+        models.RecurringRule.id == rule_id,
+        models.RecurringRule.user_id == current_user.id
+    ).first()
+
+    if not db_rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    for key, value in rule.dict().items():
+        setattr(db_rule, key, value)
+
+    db.commit()
+    db.refresh(db_rule)
+    return db_rule
+
+# DELETE - Excluir Regra Recorrente
+@app.delete("/recurring_rules/{rule_id}")
+def delete_recurring_rule(
+    rule_id: str,
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    db_rule = db.query(models.RecurringRule).filter(
+        models.RecurringRule.id == rule_id,
+        models.RecurringRule.user_id == current_user.id
+    ).first()
+
+    if not db_rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    db.delete(db_rule)
+    db.commit()
+    return {"ok": True}
+
 @app.get("/reserves", response_model=List[schemas.Reserve])
 def read_reserves(db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
     return crud.get_reserves(db, user_id=current_user.id)
