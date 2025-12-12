@@ -22,6 +22,7 @@ export const Transactions: React.FC = () => {
   // Recurring Rule State
   const [createRecurring, setCreateRecurring] = useState(false);
   const [recurringDay, setRecurringDay] = useState('5');
+  const [recurringEndDate, setRecurringEndDate] = useState('');
 
   const filteredTransactions = transactions.filter(t => {
     if (filter === 'ALL') return true;
@@ -41,6 +42,7 @@ export const Transactions: React.FC = () => {
     setIsFormOpen(false);
     setCreateRecurring(false);
     setRecurringDay('5');
+    setRecurringEndDate('');
   };
 
   const handleEdit = (t: Transaction) => {
@@ -86,7 +88,8 @@ export const Transactions: React.FC = () => {
           description: desc,
           rrule: `FREQ=MONTHLY;BYMONTHDAY=${recurringDay}`,
           active: true,
-          auto_create: false
+          auto_create: false,
+          end_date: recurringEndDate || null
         });
       }
     }
@@ -175,18 +178,30 @@ export const Transactions: React.FC = () => {
               </label>
 
               {createRecurring && (
-                <div>
-                  <label className="text-xs text-zinc-400 mb-1 block">
-                    Repetir todo dia (1-31)
-                  </label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="31"
-                    value={recurringDay}
-                    onChange={(e) => setRecurringDay(e.target.value)}
-                    placeholder="Dia do mês"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">
+                      Repetir todo dia (1-31)
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={recurringDay}
+                      onChange={(e) => setRecurringDay(e.target.value)}
+                      placeholder="Dia do mês"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">
+                      Data Limite (Opcional)
+                    </label>
+                    <Input
+                      type="date"
+                      value={recurringEndDate}
+                      onChange={(e) => setRecurringEndDate(e.target.value)}
+                    />
+                  </div>
                 </div>
               )}
             </div>

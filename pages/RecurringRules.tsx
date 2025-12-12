@@ -17,7 +17,8 @@ export const RecurringRules: React.FC = () => {
     description: '',
     day: '5',
     active: true,
-    auto_create: false
+    auto_create: false,
+    end_date: ''
   });
 
   const getCategoryDetails = (catId: string) => {
@@ -31,7 +32,8 @@ export const RecurringRules: React.FC = () => {
       description: '',
       day: '5',
       active: true,
-      auto_create: false
+      auto_create: false,
+      end_date: ''
     });
     setEditingRule(null);
     setIsFormOpen(false);
@@ -47,7 +49,8 @@ export const RecurringRules: React.FC = () => {
       description: rule.description,
       day: day,
       active: rule.active,
-      auto_create: rule.auto_create || false
+      auto_create: rule.auto_create || false,
+      end_date: rule.end_date || ''
     });
     setIsFormOpen(true);
   };
@@ -67,7 +70,8 @@ export const RecurringRules: React.FC = () => {
       description: formData.description,
       rrule: `FREQ=MONTHLY;BYMONTHDAY=${formData.day}`,
       active: formData.active,
-      auto_create: formData.auto_create
+      auto_create: formData.auto_create,
+      end_date: formData.end_date || null
     };
 
     if (editingRule) {
@@ -227,6 +231,19 @@ export const RecurringRules: React.FC = () => {
                   required
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-zinc-400 mb-1 block">Data Limite (Opcional)</label>
+              <Input
+                type="date"
+                value={formData.end_date}
+                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                placeholder="Data final (ex: para parcelas)"
+              />
+              <p className="text-[10px] text-zinc-500 mt-1">
+                Defina uma data final para regras temporárias (ex: parcelamentos). Deixe em branco para regras indeterminadas.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

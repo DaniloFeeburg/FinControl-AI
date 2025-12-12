@@ -60,6 +60,7 @@ class RecurringRule(Base):
     auto_create = Column(Boolean, default=False)
     last_execution = Column(String, nullable=True) # YYYY-MM-DD
     next_execution = Column(String, nullable=True) # YYYY-MM-DD
+    end_date = Column(String, nullable=True) # YYYY-MM-DD
 
     user = relationship("User", back_populates="recurring_rules")
     category = relationship("Category", back_populates="recurring_rules")
