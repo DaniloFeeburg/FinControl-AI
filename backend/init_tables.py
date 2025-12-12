@@ -93,6 +93,11 @@ def init_db():
                     conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN next_execution VARCHAR"))
                     conn.commit()
 
+                if "end_date" not in cols:
+                    print("Migrating recurring_rules: Adding end_date column...")
+                    conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN end_date VARCHAR"))
+                    conn.commit()
+
     except Exception as e:
         print(f"Error initializing/migrating data: {e}")
         # Importante: não crashar o container se a migração falhar parcialmente,
