@@ -6,7 +6,7 @@ import { formatCurrency } from '../utils/projection';
 import { Transaction } from '../types';
 
 export const Transactions: React.FC = () => {
-  const { transactions, categories, addTransaction, updateTransaction, deleteTransaction } = useStore();
+  const { transactions, categories, addTransaction, updateTransaction, deleteTransaction, addRecurringRule } = useStore();
   const [filter, setFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   
   // Form State
@@ -18,6 +18,10 @@ export const Transactions: React.FC = () => {
   const [catId, setCatId] = useState('');
   const [date, setDate] = useState('');
   const [type, setType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+
+  // Recurring Rule State
+  const [createRecurring, setCreateRecurring] = useState(false);
+  const [recurringDay, setRecurringDay] = useState('5');
 
   const filteredTransactions = transactions.filter(t => {
     if (filter === 'ALL') return true;
@@ -35,6 +39,8 @@ export const Transactions: React.FC = () => {
     setType('EXPENSE');
     setEditingId(null);
     setIsFormOpen(false);
+    setCreateRecurring(false);
+    setRecurringDay('5');
   };
 
   const handleEdit = (t: Transaction) => {
@@ -54,7 +60,7 @@ export const Transactions: React.FC = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = parseFloat(amount) * 100; // Convert to cents
     const finalAmount = type === 'EXPENSE' ? -Math.abs(val) : Math.abs(val);
@@ -68,12 +74,25 @@ export const Transactions: React.FC = () => {
     };
 
     if (editingId) {
-      updateTransaction(editingId, transactionData);
+      await updateTransaction(editingId, transactionData);
     } else {
-      addTransaction(transactionData);
+      await addTransaction(transactionData);
+
+      // 🔥 NOVO: Criar regra recorrente se checkbox marcado
+      if (createRecurring) {
+        await addRecurringRule({
+          category_id: catId || categories[0]?.id,
+          amount: finalAmount,
+          description: desc,
+          rrule: `FREQ=MONTHLY;BYMONTHDAY=${recurringDay}`,
+          active: true,
+          auto_create: false
+        });
+      }
     }
     
     resetForm();
+    setCreateRecurring(false);
   };
 
   return (
@@ -141,6 +160,36 @@ export const Transactions: React.FC = () => {
               onChange={e => setDesc(e.target.value)}
               required
             />
+
+            <div className="border-t border-zinc-800 pt-4 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createRecurring}
+                  onChange={(e) => setCreateRecurring(e.target.checked)}
+                  className="rounded border-zinc-700 bg-zinc-900 text-purple-500"
+                />
+                <span className="text-sm text-zinc-300">
+                  🔄 Tornar esta transação recorrente
+                </span>
+              </label>
+
+              {createRecurring && (
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block">
+                    Repetir todo dia (1-31)
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={recurringDay}
+                    onChange={(e) => setRecurringDay(e.target.value)}
+                    placeholder="Dia do mês"
+                  />
+                </div>
+              )}
+            </div>
             
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={resetForm}>Cancelar</Button>
