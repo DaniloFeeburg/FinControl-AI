@@ -86,6 +86,7 @@ class RecurringRuleBase(BaseModel):
     auto_create: bool = False
     last_execution: Optional[str] = None
     next_execution: Optional[str] = None
+    end_date: Optional[str] = None
 
 class RecurringRuleCreate(RecurringRuleBase):
     pass
