@@ -79,19 +79,19 @@ export const Transactions: React.FC = () => {
       await updateTransaction(editingId, transactionData);
     } else {
       await addTransaction(transactionData);
+    }
 
-      // 🔥 NOVO: Criar regra recorrente se checkbox marcado
-      if (createRecurring) {
-        await addRecurringRule({
-          category_id: catId || categories[0]?.id,
-          amount: finalAmount,
-          description: desc,
-          rrule: `FREQ=MONTHLY;BYMONTHDAY=${recurringDay}`,
-          active: true,
-          auto_create: false,
-          end_date: recurringEndDate || null
-        });
-      }
+    // 🔥 NOVO: Criar regra recorrente se checkbox marcado (funciona para criar e editar)
+    if (createRecurring) {
+      await addRecurringRule({
+        category_id: catId || categories[0]?.id,
+        amount: finalAmount,
+        description: desc,
+        rrule: `FREQ=MONTHLY;BYMONTHDAY=${recurringDay}`,
+        active: true,
+        auto_create: false,
+        end_date: recurringEndDate || null
+      });
     }
     
     resetForm();
