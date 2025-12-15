@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Category, Transaction, RecurringRule, Reserve, ReserveTransaction, User } from './types';
+import { Category, Transaction, RecurringRule, Reserve, ReserveTransaction, User, CreditCard } from './types';
 
 // API URL - in production it will be relative, or we can use an env var
 // If the backend is on the same host/port (e.g. via Nginx proxy), use relative path.
@@ -19,6 +19,7 @@ interface AppState {
   transactions: Transaction[];
   recurringRules: RecurringRule[];
   reserves: Reserve[];
+  creditCards: CreditCard[];
   
   loading: boolean;
   error: string | null;
@@ -46,6 +47,11 @@ interface AppState {
   updateReserve: (id: string, r: Partial<Reserve>) => Promise<void>;
   deleteReserve: (id: string) => Promise<void>;
   addReserveTransaction: (reserveId: string, amount: number, type: 'DEPOSIT' | 'WITHDRAW') => Promise<void>;
+
+  // Credit Cards
+  addCreditCard: (c: Omit<CreditCard, 'id'>) => Promise<void>;
+  updateCreditCard: (id: string, c: Partial<Omit<CreditCard, 'id'>>) => Promise<void>;
+  deleteCreditCard: (id: string) => Promise<void>;
   
   // Helpers
   getBalance: () => number;
@@ -81,6 +87,7 @@ export const useStore = create<AppState>((set, get) => ({
   transactions: [],
   recurringRules: [],
   reserves: [],
+  creditCards: [],
   loading: false,
   error: null,
 
@@ -133,7 +140,7 @@ export const useStore = create<AppState>((set, get) => ({
   logout: () => {
     localStorage.removeItem('token');
     localStorage.clear(); // Clear all data as requested
-    set({ user: null, token: null, isAuthenticated: false, categories: [], transactions: [], recurringRules: [], reserves: [] });
+    set({ user: null, token: null, isAuthenticated: false, categories: [], transactions: [], recurringRules: [], reserves: [], creditCards: [] });
     // Force reload to clear any memory states if needed, or just redirect
     window.location.hash = '#/login';
   },
@@ -172,17 +179,19 @@ export const useStore = create<AppState>((set, get) => ({
       const headers = getAuthHeaders(token);
       const authFetch = (url: string) => authorizedFetch(url, { headers }, get().logout).then(r => r.json());
 
-      const [cats, trans, rules, res] = await Promise.all([
+      const [cats, trans, rules, res, cards] = await Promise.all([
         authFetch(`${API_URL}/categories`),
         authFetch(`${API_URL}/transactions`),
         authFetch(`${API_URL}/recurring_rules`),
-        authFetch(`${API_URL}/reserves`)
+        authFetch(`${API_URL}/reserves`),
+        authFetch(`${API_URL}/credit_cards`)
       ]);
       set({
         categories: cats,
         transactions: trans,
         recurringRules: rules,
         reserves: res,
+        creditCards: cards,
         loading: false
       });
     } catch (err) {
@@ -436,6 +445,64 @@ export const useStore = create<AppState>((set, get) => ({
           const updatedReserve = await response.json();
           set((state) => ({
               reserves: state.reserves.map(r => r.id === reserveId ? updatedReserve : r)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
+
+  addCreditCard: async (c) => {
+      try {
+          const token = get().token;
+          const response = await authorizedFetch(`${API_URL}/credit_cards`, {
+              method: 'POST',
+              headers: getAuthHeaders(token),
+              body: JSON.stringify(c)
+          }, get().logout);
+          if (!response.ok) throw new Error('Failed to add credit card');
+          const newCard = await response.json();
+          set((state) => ({
+              creditCards: [...state.creditCards, newCard]
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
+
+  updateCreditCard: async (id, updatedC) => {
+      const currentCard = get().creditCards.find(c => c.id === id);
+      if (!currentCard) return;
+
+      const merged = { ...currentCard, ...updatedC };
+      const { id: _, ...payload } = merged;
+
+      try {
+          const token = get().token;
+          const response = await authorizedFetch(`${API_URL}/credit_cards/${id}`, {
+              method: 'PUT',
+              headers: getAuthHeaders(token),
+              body: JSON.stringify(payload)
+          }, get().logout);
+          if (!response.ok) throw new Error('Failed to update credit card');
+          const savedCard = await response.json();
+          set((state) => ({
+              creditCards: state.creditCards.map(c => c.id === id ? savedCard : c)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
+
+  deleteCreditCard: async (id) => {
+      try {
+          const token = get().token;
+          const response = await authorizedFetch(`${API_URL}/credit_cards/${id}`, {
+              method: 'DELETE',
+              headers: getAuthHeaders(token)
+          }, get().logout);
+          if (!response.ok) throw new Error('Failed to delete credit card');
+          set((state) => ({
+              creditCards: state.creditCards.filter(c => c.id !== id)
           }));
       } catch (err) {
           console.error(err);

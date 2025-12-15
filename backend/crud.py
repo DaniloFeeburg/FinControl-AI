@@ -98,6 +98,33 @@ def create_reserve(db: Session, reserve: schemas.ReserveCreate, user_id: str):
     db.refresh(db_reserve)
     return db_reserve
 
+# Credit Cards
+def get_credit_cards(db: Session, user_id: str):
+    return db.query(models.CreditCard).filter(models.CreditCard.user_id == user_id).all()
+
+def create_credit_card(db: Session, credit_card: schemas.CreditCardCreate, user_id: str):
+    db_credit_card = models.CreditCard(id=str(uuid.uuid4()), user_id=user_id, **credit_card.dict())
+    db.add(db_credit_card)
+    db.commit()
+    db.refresh(db_credit_card)
+    return db_credit_card
+
+def update_credit_card(db: Session, credit_card_id: str, credit_card: schemas.CreditCardCreate, user_id: str):
+    db_credit_card = db.query(models.CreditCard).filter(models.CreditCard.id == credit_card_id, models.CreditCard.user_id == user_id).first()
+    if db_credit_card:
+        for key, value in credit_card.dict().items():
+            setattr(db_credit_card, key, value)
+        db.commit()
+        db.refresh(db_credit_card)
+    return db_credit_card
+
+def delete_credit_card(db: Session, credit_card_id: str, user_id: str):
+    db_credit_card = db.query(models.CreditCard).filter(models.CreditCard.id == credit_card_id, models.CreditCard.user_id == user_id).first()
+    if db_credit_card:
+        db.delete(db_credit_card)
+        db.commit()
+    return db_credit_card
+
 def update_reserve(db: Session, reserve_id: str, reserve: schemas.ReserveCreate, user_id: str):
     db_reserve = db.query(models.Reserve).filter(models.Reserve.id == reserve_id, models.Reserve.user_id == user_id).first()
     if db_reserve:

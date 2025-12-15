@@ -5,6 +5,7 @@ import { Transactions } from './pages/Transactions';
 import { Categories } from './pages/Categories';
 import { RecurringRules } from './pages/RecurringRules';
 import { Reserves } from './pages/Reserves';
+import CreditCards from './pages/CreditCards';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { useStore } from './store';
@@ -69,6 +70,9 @@ const Router = () => {
       break;
     case '#/reserves':
       Component = Reserves;
+      break;
+    case '#/credit-cards':
+      Component = CreditCards;
       break;
     case '#/register': // Redirect authenticated users away from register/login if they try to access it
     case '#/login':

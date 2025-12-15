@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Receipt, Tags, PiggyBank, PieChart, Menu, X, Bot, LogOut, User as UserIcon, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, Receipt, Tags, PiggyBank, PieChart, Menu, X, Bot, LogOut, User as UserIcon, CalendarClock, CreditCard } from 'lucide-react';
 import { useStore } from '../store';
 
 interface NavItemProps {
@@ -95,6 +95,13 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               label="Recorrências"
               href="#/recurring"
               active={currentPath === '#/recurring'}
+              onClick={() => setIsOpen(false)}
+            />
+            <NavItem
+              icon={CreditCard}
+              label="Cartões"
+              href="#/credit-cards"
+              active={currentPath === '#/credit-cards'}
               onClick={() => setIsOpen(false)}
             />
             <NavItem 

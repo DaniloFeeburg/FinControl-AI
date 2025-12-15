@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useStore } from '../store';
 import { Card, Button, Input } from '../components/ui';
-import { Plus, ArrowUpRight, ArrowDownLeft, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Pencil, Trash2, X, CreditCard } from 'lucide-react';
 import { formatCurrency } from '../utils/projection';
 import { Transaction } from '../types';
 
 export const Transactions: React.FC = () => {
-  const { transactions, categories, addTransaction, updateTransaction, deleteTransaction, addRecurringRule } = useStore();
+  const { transactions, categories, creditCards, addTransaction, updateTransaction, deleteTransaction, addRecurringRule } = useStore();
   const [filter, setFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   
   // Form State
@@ -16,6 +16,7 @@ export const Transactions: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [desc, setDesc] = useState('');
   const [catId, setCatId] = useState('');
+  const [creditCardId, setCreditCardId] = useState('');
   const [date, setDate] = useState('');
   const [type, setType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
 
@@ -36,6 +37,7 @@ export const Transactions: React.FC = () => {
     setAmount('');
     setDesc('');
     setCatId('');
+    setCreditCardId('');
     setDate(new Date().toISOString().split('T')[0]);
     setType('EXPENSE');
     setEditingId(null);
@@ -51,6 +53,7 @@ export const Transactions: React.FC = () => {
     setAmount((Math.abs(t.amount) / 100).toString());
     setDesc(t.description);
     setCatId(t.category_id);
+    setCreditCardId(t.credit_card_id || '');
     setDate(t.date);
     setType(isExpense ? 'EXPENSE' : 'INCOME');
     setIsFormOpen(true);
@@ -69,10 +72,11 @@ export const Transactions: React.FC = () => {
 
     const transactionData = {
       category_id: catId || categories[0]?.id,
+      credit_card_id: creditCardId || null,
       amount: finalAmount,
       date: date || new Date().toISOString().split('T')[0],
       description: desc,
-      status: 'PAID' as const,
+      status: (creditCardId ? 'PENDING' : 'PAID') as any, // CC transactions are pending until paid via invoice, usually
     };
 
     if (editingId) {
@@ -85,6 +89,7 @@ export const Transactions: React.FC = () => {
     if (createRecurring) {
       await addRecurringRule({
         category_id: catId || categories[0]?.id,
+        credit_card_id: creditCardId || null,
         amount: finalAmount,
         description: desc,
         rrule: `FREQ=MONTHLY;BYMONTHDAY=${recurringDay}`,
@@ -157,6 +162,22 @@ export const Transactions: React.FC = () => {
                 ))}
                 </select>
             </div>
+
+            {type === 'EXPENSE' && (
+               <div>
+                  <select
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-md h-9 px-3 text-sm text-white focus:outline-none focus:border-zinc-700"
+                    value={creditCardId}
+                    onChange={e => setCreditCardId(e.target.value)}
+                  >
+                    <option value="">Sem Cartão de Crédito</option>
+                    {creditCards.filter(cc => cc.active).map(cc => (
+                        <option key={cc.id} value={cc.id}>{cc.name} - {cc.brand}</option>
+                    ))}
+                  </select>
+               </div>
+            )}
+
             <Input 
               placeholder="Descrição (ex: Supermercado)" 
               value={desc} 
@@ -165,44 +186,57 @@ export const Transactions: React.FC = () => {
             />
 
             <div className="border-t border-zinc-800 pt-4 space-y-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={createRecurring}
-                  onChange={(e) => setCreateRecurring(e.target.checked)}
-                  className="rounded border-zinc-700 bg-zinc-900 text-purple-500"
-                />
-                <span className="text-sm text-zinc-300">
-                  🔄 Tornar esta transação recorrente
-                </span>
-              </label>
+              {editingId && transactions.find(t => t.id === editingId)?.recurring_rule_id ? (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                      <p className="text-xs text-emerald-400 font-medium flex items-center gap-2">
+                          🔄 Esta transação faz parte de uma recorrência.
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                          Para alterar a regra, vá para o menu Recorrências.
+                      </p>
+                  </div>
+              ) : (
+                <>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={createRecurring}
+                      onChange={(e) => setCreateRecurring(e.target.checked)}
+                      className="rounded border-zinc-700 bg-zinc-900 text-purple-500"
+                    />
+                    <span className="text-sm text-zinc-300">
+                      🔄 Tornar esta transação recorrente
+                    </span>
+                  </label>
 
-              {createRecurring && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-zinc-400 mb-1 block">
-                      Repetir todo dia (1-31)
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={recurringDay}
-                      onChange={(e) => setRecurringDay(e.target.value)}
-                      placeholder="Dia do mês"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-zinc-400 mb-1 block">
-                      Data Limite (Opcional)
-                    </label>
-                    <Input
-                      type="date"
-                      value={recurringEndDate}
-                      onChange={(e) => setRecurringEndDate(e.target.value)}
-                    />
-                  </div>
-                </div>
+                  {createRecurring && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs text-zinc-400 mb-1 block">
+                          Repetir todo dia (1-31)
+                        </label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={recurringDay}
+                          onChange={(e) => setRecurringDay(e.target.value)}
+                          placeholder="Dia do mês"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-zinc-400 mb-1 block">
+                          Data Limite (Opcional)
+                        </label>
+                        <Input
+                          type="date"
+                          value={recurringEndDate}
+                          onChange={(e) => setRecurringEndDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             
@@ -251,7 +285,10 @@ export const Transactions: React.FC = () => {
                     {new Date(t.date).toLocaleDateString('pt-BR')}
                   </td>
                   <td className="px-4 py-4 text-sm font-medium text-zinc-200">
-                    {t.description}
+                    <div className="flex items-center gap-2">
+                        {t.credit_card_id && <CreditCard size={14} className="text-zinc-500" />}
+                        {t.description}
+                    </div>
                   </td>
                   <td className="px-4 py-4">
                     {cat && (

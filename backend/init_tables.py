@@ -73,7 +73,7 @@ def init_db():
 
         # 2. Executar migrações de schema para tabelas antigas
         # Tabelas que precisam de user_id
-        tables_to_migrate = ['categories', 'transactions', 'recurring_rules', 'reserves']
+        tables_to_migrate = ['categories', 'transactions', 'recurring_rules', 'reserves', 'credit_cards']
 
         with engine.connect() as conn:
             for table in tables_to_migrate:
@@ -96,6 +96,25 @@ def init_db():
                 if "end_date" not in cols:
                     print("Migrating recurring_rules: Adding end_date column...")
                     conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN end_date VARCHAR"))
+                    conn.commit()
+
+            # Migrate transactions (credit_card_id)
+            if inspector.has_table("transactions"):
+                cols = [c['name'] for c in inspector.get_columns("transactions")]
+                if "credit_card_id" not in cols:
+                    print("Migrating transactions: Adding credit_card_id column...")
+                    conn.execute(text("ALTER TABLE transactions ADD COLUMN credit_card_id VARCHAR REFERENCES credit_cards(id)"))
+                    conn.commit()
+                if "recurring_rule_id" not in cols:
+                    print("Migrating transactions: Adding recurring_rule_id column...")
+                    conn.execute(text("ALTER TABLE transactions ADD COLUMN recurring_rule_id VARCHAR REFERENCES recurring_rules(id)"))
+                    conn.commit()
+
+            if inspector.has_table("recurring_rules"):
+                cols = [c['name'] for c in inspector.get_columns("recurring_rules")]
+                if "credit_card_id" not in cols:
+                    print("Migrating recurring_rules: Adding credit_card_id column...")
+                    conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN credit_card_id VARCHAR REFERENCES credit_cards(id)"))
                     conn.commit()
 
     except Exception as e:
