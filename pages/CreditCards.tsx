@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { CreditCard, Transaction } from '../types';
-import { Plus, CreditCard as CreditCardIcon, Trash2, Edit2, Calendar, TrendingUp, AlertCircle, X, Check } from 'lucide-react';
+import { Plus, CreditCard as CreditCardIcon, Trash2, Edit2, Calendar, TrendingUp, AlertCircle, X, Check, BarChart3 } from 'lucide-react';
 import { format } from 'date-fns';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function CreditCards() {
   const { creditCards, addCreditCard, updateCreditCard, deleteCreditCard, user, categories } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [showProjection, setShowProjection] = useState(false);
+  const [projectionData, setProjectionData] = useState<any[]>([]);
 
   // Form State
   const [formData, setFormData] = useState<Partial<CreditCard>>({
@@ -48,22 +51,32 @@ export default function CreditCards() {
   useEffect(() => {
     if (selectedCardId && selectedStatementMonth) {
       fetchStatement(selectedCardId, selectedStatementMonth);
+      if (showProjection) {
+          fetchProjection(selectedCardId);
+      }
     }
-  }, [selectedCardId, selectedStatementMonth]);
+  }, [selectedCardId, selectedStatementMonth, showProjection]);
+
+  const fetchProjection = async (cardId: string) => {
+      try {
+          const API_URL = import.meta.env.VITE_API_URL || '/api';
+          const token = localStorage.getItem('token');
+          const response = await fetch(`${API_URL}/credit_cards/${cardId}/projection`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.ok) {
+              const data = await response.json();
+              setProjectionData(data);
+          }
+      } catch (error) {
+          console.error("Failed to fetch projection", error);
+      }
+  };
 
   const fetchStatement = async (cardId: string, month: string) => {
     setLoadingStatement(true);
     try {
       const token = localStorage.getItem('token');
-      // In production/dev this URL needs to be correct. Assuming /api prefix or relative.
-      // Since store.ts uses API_URL which falls back to /api.
-      // We should check store.ts implementation but here we will fetch manually or add to store.
-      // Ideally we'd add to store, but for simplicity let's use fetch here with auth.
-      // But we should use authorizedFetch logic from store...
-      // Since authorizedFetch is internal to store, I'll replicate basic auth fetch here or use a helper.
-      // But wait, the requirements say "Integration with existing module".
-      // Let's rely on standard fetch with localStorage token for now.
-
       const API_URL = import.meta.env.VITE_API_URL || '/api';
       const response = await fetch(`${API_URL}/credit_cards/${cardId}/statement?month=${month}`, {
         headers: {
@@ -159,8 +172,6 @@ export default function CreditCards() {
   };
 
   const getBrandIcon = (brand: string) => {
-    // Simple placeholder logic or icon mapping
-    // You could use different icons or text badges
     return <CreditCardIcon className="w-5 h-5" />;
   };
 
@@ -170,43 +181,31 @@ export default function CreditCards() {
 
   // Helper to format currency
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val / 100); // Fixed scaling here?
+    // Wait, projection.ts `formatCurrency` divides by 100.
+    // My previous implementation used `new Intl.NumberFormat(...).format(val)`.
+    // If I use `val / 100`, I am manually doing what `projection.ts` might do.
+    // Let's assume input `val` is CENTS.
+    // Standard JS Intl.NumberFormat expects REAL value.
+    // So if val is 3280, I should pass 32.80.
+    // So yes, `val / 100` is correct.
   };
 
   const availableLimit = (card: CreditCard) => {
-      // Calculation: limit - sum(pending transactions).
-      // Requirements say: credit_limit - sum(transactions where status='PENDING' and credit_card_id=X)
-      // Wait, usually limit is reduced by ALL purchases in the current billing cycle + outstanding balance?
-      // Requirement specifically says: "sum(transactions where status='PENDING' and credit_card_id=X)"
-      // This implies PAID transactions restore the limit?
-      // Or maybe 'PENDING' means "Not yet paid via invoice"?
-      // Let's assume standard logic: Limit - Current Invoice Amount.
-      // But complying with requirement "credit_limit - sum(transactions where status='PENDING' and credit_card_id=X)"
-      // Need access to ALL transactions to calculate this accurately across all time?
-      // Store has `transactions` (all of them).
-
       const { transactions } = useStore.getState();
-      // Requirement says "status='PENDING'".
-      // In Credit Card context, usually purchases are "Pending" payment until the bill is paid.
-      // But `Transaction` model status is 'PAID' or 'PENDING'.
-      // If I buy coffee, status is PAID (to the merchant)? Or PENDING (until I pay the bill)?
-      // Typically in this app, 'PAID' means the money left the account.
-      // For CC, money leaves account only when paying the bill.
-      // So individual CC transactions might be 'PENDING' until bill payment?
-      // Or maybe they are 'PAID' (transaction done) but the debt is there.
 
-      // Let's stick to the requirement literally:
-      // "Limit Available: credit_limit - sum(transactions where status='PENDING' and credit_card_id=X)"
-      // If the user marks CC transactions as PENDING, this works.
-
-      const usedLimit = transactions
+      const usedLimitCents = transactions
         .filter(t => t.credit_card_id === card.id && t.status === 'PENDING')
-        .reduce((sum, t) => sum + Math.abs(t.amount), 0); // Assuming expenses are negative or positive, we want magnitude of debt.
-        // Wait, if expenses are negative, we need to substract.
-        // Typically expenses are stored as negative in this app logic (inferred from previous steps).
-        // Let's assume absolute value for limit usage.
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-      return card.credit_limit - usedLimit;
+      // Limit is stored as Real (e.g., 5000). Used Limit is Cents.
+      // Convert Limit to Cents for calculation, then return Cents?
+      // Or return Real?
+      // formatCurrency expects Cents (and divides by 100).
+      // So let's return Cents.
+
+      const limitCents = card.credit_limit * 100;
+      return limitCents - usedLimitCents;
   };
 
   return (
@@ -230,15 +229,16 @@ export default function CreditCards() {
         <div className="space-y-4">
           {creditCards.map(card => {
              // Calculate Limit Usage for Progress Bar
-             const limit = card.credit_limit;
-             const available = availableLimit(card);
-             const used = limit - available;
-             const progress = Math.min((used / limit) * 100, 100);
+             // All in Cents now
+             const limitCents = card.credit_limit * 100;
+             const availableCents = availableLimit(card);
+             const usedCents = limitCents - availableCents;
+             const progress = Math.min((usedCents / limitCents) * 100, 100);
 
              return (
               <div
                 key={card.id}
-                onClick={() => setSelectedCardId(card.id)}
+                onClick={() => { setSelectedCardId(card.id); setShowProjection(false); }}
                 className={`p-4 rounded-xl border transition-all cursor-pointer ${selectedCardId === card.id ? 'border-emerald-500 bg-zinc-800/80' : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'}`}
               >
                 <div className="flex justify-between items-start mb-3">
@@ -260,14 +260,14 @@ export default function CreditCards() {
                 <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                         <span className="text-zinc-400">Limite Utilizado</span>
-                        <span className="text-white font-medium">{formatCurrency(used)}</span>
+                        <span className="text-white font-medium">{formatCurrency(usedCents)}</span>
                     </div>
                     <div className="w-full bg-zinc-700 h-2 rounded-full overflow-hidden">
                         <div className="bg-emerald-500 h-full transition-all" style={{width: `${progress}%`}}></div>
                     </div>
                     <div className="flex justify-between text-xs text-zinc-500">
-                        <span>Disponível: {formatCurrency(available)}</span>
-                        <span>Total: {formatCurrency(limit)}</span>
+                        <span>Disponível: {formatCurrency(availableCents)}</span>
+                        <span>Total: {formatCurrency(limitCents)}</span>
                     </div>
                 </div>
 
@@ -295,6 +295,38 @@ export default function CreditCards() {
 
                 {selectedCardId && statementData ? (
                     <>
+                         <div className="flex justify-end mb-4">
+                            <button
+                                onClick={() => setShowProjection(!showProjection)}
+                                className="flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+                            >
+                                <BarChart3 className="w-4 h-4" />
+                                {showProjection ? 'Ver Fatura Atual' : 'Ver Projeção Futura'}
+                            </button>
+                        </div>
+
+                        {showProjection ? (
+                            <div className="bg-zinc-900/50 p-6 rounded-lg mb-6">
+                                <h3 className="text-lg font-bold text-white mb-4">Projeção de Faturas (Próximos 12 Meses)</h3>
+                                <div className="h-64 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={projectionData}>
+                                            <XAxis dataKey="month" stroke="#71717a" fontSize={12} />
+                                            <YAxis stroke="#71717a" fontSize={12} tickFormatter={(val) => `R$ ${val/100}`} />
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46' }}
+                                                formatter={(val: number) => [`R$ ${(val/100).toFixed(2)}`, 'Total']}
+                                            />
+                                            <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                                                {projectionData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.total < 0 ? '#ef4444' : '#10b981'} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                              <div className="bg-zinc-900/50 p-4 rounded-lg">
                                  <span className="text-sm text-zinc-400 block mb-1">Total da Fatura</span>
@@ -330,20 +362,26 @@ export default function CreditCards() {
                                  )}
                              </div>
                         </div>
+                        )}
 
+                        {!showProjection && (
                         <div className="space-y-2">
                              {statementData.transactions.length === 0 ? (
                                  <p className="text-center text-zinc-500 py-8">Nenhuma transação nesta fatura.</p>
                              ) : (
-                                 statementData.transactions.map(t => (
-                                     <div key={t.id} className="flex justify-between items-center p-3 bg-zinc-900/30 rounded-lg hover:bg-zinc-900/50 transition-colors">
+                                 statementData.transactions.map((t, idx) => (
+                                     <div key={t.id || idx} className="flex justify-between items-center p-3 bg-zinc-900/30 rounded-lg hover:bg-zinc-900/50 transition-colors">
                                           <div className="flex items-center gap-3">
                                               <div className="p-2 bg-zinc-800 rounded-lg text-zinc-400">
-                                                  {/* Ideally show category icon */}
                                                   <TrendingUp className="w-4 h-4" />
                                               </div>
                                               <div>
-                                                  <p className="font-medium text-white">{t.description}</p>
+                                                  <div className="flex items-center gap-2">
+                                                      <p className="font-medium text-white">{t.description}</p>
+                                                      {t.id.startsWith('virtual') && (
+                                                          <span className="text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400 border border-zinc-700">Projeção</span>
+                                                      )}
+                                                  </div>
                                                   <p className="text-xs text-zinc-400">{format(new Date(t.date), 'dd/MM')} • {getCategoryName(t.category_id)}</p>
                                               </div>
                                           </div>
@@ -354,6 +392,7 @@ export default function CreditCards() {
                                  ))
                              )}
                         </div>
+                        )}
                     </>
                 ) : (
                     <div className="text-center py-12 text-zinc-500">

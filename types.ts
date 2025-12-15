@@ -19,6 +19,8 @@ export interface Category {
 export interface Transaction {
   id: string;
   category_id: string;
+  credit_card_id?: string | null;
+  recurring_rule_id?: string | null;
   amount: number; // Stored as integer (cents)
   date: string; // ISO 8601
   description: string;
@@ -29,6 +31,7 @@ export interface Transaction {
 export interface RecurringRule {
   id: string;
   category_id: string;
+  credit_card_id?: string | null;
   amount: number;
   description: string;
   rrule: string; // Simplified for demo: "FREQ=MONTHLY;BYMONTHDAY=5"

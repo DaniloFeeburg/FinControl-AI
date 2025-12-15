@@ -97,6 +97,7 @@ class CreditCard(CreditCardBase):
 class TransactionBase(BaseModel):
     category_id: Optional[str] = None
     credit_card_id: Optional[str] = None
+    recurring_rule_id: Optional[str] = None
     amount: float
     date: str
     description: str
@@ -115,6 +116,7 @@ class Transaction(TransactionBase):
 
 class RecurringRuleBase(BaseModel):
     category_id: Optional[str] = None
+    credit_card_id: Optional[str] = None
     amount: float
     description: str
     rrule: str

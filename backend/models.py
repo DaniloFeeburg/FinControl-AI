@@ -33,6 +33,7 @@ class CreditCard(Base):
 
     user = relationship("User", back_populates="credit_cards")
     transactions = relationship("Transaction", back_populates="credit_card")
+    recurring_rules = relationship("RecurringRule", back_populates="credit_card")
 
 class Category(Base):
     __tablename__ = "categories"
@@ -56,6 +57,7 @@ class Transaction(Base):
     user_id = Column(String, ForeignKey("users.id"))
     category_id = Column(String, ForeignKey("categories.id"))
     credit_card_id = Column(String, ForeignKey("credit_cards.id"), nullable=True)
+    recurring_rule_id = Column(String, ForeignKey("recurring_rules.id"), nullable=True)
     amount = Column(Float)
     date = Column(String) # YYYY-MM-DD
     description = Column(String)
@@ -65,6 +67,7 @@ class Transaction(Base):
     user = relationship("User", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
     credit_card = relationship("CreditCard", back_populates="transactions")
+    recurring_rule = relationship("RecurringRule", back_populates="transactions")
 
 class RecurringRule(Base):
     __tablename__ = "recurring_rules"
@@ -72,6 +75,7 @@ class RecurringRule(Base):
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))
     category_id = Column(String, ForeignKey("categories.id"))
+    credit_card_id = Column(String, ForeignKey("credit_cards.id"), nullable=True)
     amount = Column(Float)
     description = Column(String)
     rrule = Column(String)
@@ -83,6 +87,8 @@ class RecurringRule(Base):
 
     user = relationship("User", back_populates="recurring_rules")
     category = relationship("Category", back_populates="recurring_rules")
+    credit_card = relationship("CreditCard", back_populates="recurring_rules")
+    transactions = relationship("Transaction", back_populates="recurring_rule")
 
 class Reserve(Base):
     __tablename__ = "reserves"

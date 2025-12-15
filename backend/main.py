@@ -280,12 +280,6 @@ def get_credit_card_statement(
     # So if I request month=2023-12, I expect transactions from 2023-11-10 to 2023-12-09.
 
     start_date_str = start_date.strftime("%Y-%m-%d")
-    # For end date, we usually exclude the closing day of the current month if the range starts on closing day of prev month?
-    # If range starts 10/Nov.
-    # Does it include 10/Nov? Yes.
-    # Does it include 10/Dec? No, that starts the next one.
-    # So range is >= Start and < End.
-
     end_date_str = end_date.strftime("%Y-%m-%d")
 
     # Query transactions
@@ -296,42 +290,104 @@ def get_credit_card_statement(
         models.Transaction.date < end_date_str
     ).order_by(models.Transaction.date.desc()).all()
 
-    total_spent = sum(t.amount for t in transactions if t.amount < 0) # Assuming expense is negative?
-    # Wait, existing app logic: Expenses are typically positive in DB but typed as EXPENSE?
-    # Let's check Transaction model/logic.
-    # Transaction has 'amount'. Usually in finance apps, amount is signed or there is a type.
-    # Category has 'type' (INCOME, EXPENSE).
-    # Transaction model doesn't store type, relies on Category.
-    # However, for credit card bill, it's mostly expenses. But refunds (income) reduce the bill.
-
     statement_items = []
     total_invoice = 0.0
 
     for t in transactions:
-        # Fetch category type to determine sign if needed, or rely on amount.
-        # Check how amount is stored.
-        # In crud.py, create_transaction just saves amount.
-        # In frontend, Expense usually sent as negative? Or positive with type?
-        # Let's assume standard behavior: we sum amounts. If the app stores expenses as negative, simple sum works.
-        # If it stores as positive and uses Category.type to distinguish, we need to join Category.
-
-        # Let's peek at how `getBalance` works in store.ts
-        # getBalance: transactions.reduce((acc, t) => acc + t.amount, 0);
-        # This implies amount is signed (Income positive, Expense negative).
-
         total_invoice += t.amount
         statement_items.append(t)
 
-    # Invert total because usually we show invoice as a positive debt?
-    # If I spent -100, -50. Total is -150. Invoice value is 150.
-    # But let's return the raw sum and let frontend handle display.
+    # RECURRING RULES PROJECTION
+    # Find rules linked to this card
+    rules = db.query(models.RecurringRule).filter(
+        models.RecurringRule.user_id == current_user.id,
+        models.RecurringRule.credit_card_id == card_id,
+        models.RecurringRule.active == True
+    ).all()
+
+    for rule in rules:
+        # Check if rule executes within start_date and end_date
+        # Simple RRule parsing (Assuming FREQ=MONTHLY;BYMONTHDAY=X)
+        import re
+        match = re.search(r"BYMONTHDAY=(\d+)", rule.rrule)
+        if match:
+            day = int(match.group(1))
+
+            # Check if this day exists in the period months
+            # Period spans across two months usually (e.g. 10 Oct - 10 Nov)
+            # Check candidate dates
+
+            # Candidate 1: In the start_date's month
+            try:
+                candidate1 = datetime.date(start_date.year, start_date.month, day)
+            except ValueError:
+                candidate1 = None # Invalid date (e.g. Feb 30)
+
+            # Candidate 2: In the end_date's month
+            # Note: end_date month might be same as start_date month if closing day is 1st and we look at same month?
+            # Usually period spans 2 months.
+            try:
+                candidate2 = datetime.date(end_date.year, end_date.month, day)
+            except ValueError:
+                candidate2 = None
+
+            candidates = []
+            if candidate1: candidates.append(candidate1)
+            # Avoid adding same date twice if months are same (unlikely for standard statement logic but safe)
+            if candidate2 and (not candidate1 or candidate2 != candidate1): candidates.append(candidate2)
+
+            for d in candidates:
+                # Check if d is within [start_date, end_date)
+                # And check end_date of rule
+                rule_end = datetime.datetime.strptime(rule.end_date, "%Y-%m-%d").date() if rule.end_date else None
+
+                if start_date <= d < end_date:
+                    if rule_end and d > rule_end:
+                        continue
+
+                    # Check if a real transaction already exists for this rule on this date
+                    # To avoid duplication if the rule already executed
+                    # We check if there is a transaction with this recurring_rule_id around this date
+                    # Or simply trust that if it's in `transactions` list (fetched above), we shouldn't add it.
+                    # But transactions list is filtered by date.
+                    # If the scheduler ran, the transaction exists and has credit_card_id. It is in `transactions`.
+                    # So we just need to check if we already have it in `statement_items`?
+                    # But `statement_items` are raw Transaction objects.
+                    # We need to check if any t in statement_items has recurring_rule_id == rule.id and date == d
+
+                    already_exists = any(
+                        t.recurring_rule_id == rule.id and
+                        t.date == d.strftime("%Y-%m-%d")
+                        for t in statement_items
+                    )
+
+                    if not already_exists:
+                        # Create a "virtual" transaction for display
+                        # We use a dict or a mocked object. Pydantic schema is fine if we return list of schemas.
+                        # But we are returning a dict with "transactions": [objects].
+                        # Let's create a temporary object or dict.
+                        # Frontend expects Transaction interface.
+                        virtual_t = {
+                            "id": f"virtual-{rule.id}-{d}",
+                            "category_id": rule.category_id,
+                            "credit_card_id": card_id,
+                            "recurring_rule_id": rule.id,
+                            "amount": rule.amount,
+                            "date": d.strftime("%Y-%m-%d"),
+                            "description": f"{rule.description} (Recorrente)",
+                            "status": "PENDING", # Projected
+                            "created_at": datetime.datetime.now().isoformat()
+                        }
+                        statement_items.append(virtual_t)
+                        total_invoice += rule.amount
+
+    # Sort items by date
+    statement_items.sort(key=lambda x: x['date'] if isinstance(x, dict) else x.date, reverse=True)
 
     status = "OPEN"
-    # Check if we are past the closing day
     today = datetime.date.today()
     if today >= end_date:
         status = "CLOSED"
-        # If today > due_day (of current month_date), then OVERDUE?
         due_date = get_date_safe(current_month_date.year, current_month_date.month, card.due_day)
         if today > due_date:
             status = "OVERDUE"
@@ -343,6 +399,120 @@ def get_credit_card_statement(
         "status": status,
         "due_date": get_date_safe(current_month_date.year, current_month_date.month, card.due_day).strftime("%Y-%m-%d")
     }
+
+@app.get("/credit_cards/{card_id}/projection")
+def get_credit_card_projection(
+    card_id: str,
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    import datetime
+    from dateutil.relativedelta import relativedelta
+    import re
+
+    card = db.query(models.CreditCard).filter(
+        models.CreditCard.id == card_id,
+        models.CreditCard.user_id == current_user.id
+    ).first()
+
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    projections = []
+    today = datetime.date.today()
+
+    # Project next 12 months
+    # For each month, calculate the statement total (Projected)
+
+    for i in range(12):
+        target_date = today + relativedelta(months=i)
+        # We need to align target_date to the statement month.
+        # If today is Dec 15. i=0 -> Dec. i=1 -> Jan.
+        # We want the statement that "closes" in that month? Or is "due" in that month?
+        # Typically "Jan Invoice".
+
+        # Reuse logic slightly:
+        # Statement Month X: Range [Prev Month Closing, Month X Closing)
+
+        closing_day = card.closing_day
+
+        def get_date_safe(year, month, day):
+            try:
+                return datetime.date(year, month, day)
+            except ValueError:
+                import calendar
+                last_day = calendar.monthrange(year, month)[1]
+                return datetime.date(year, month, last_day)
+
+        current_month_date = target_date
+        prev_month_date = target_date - relativedelta(months=1)
+
+        start_date = get_date_safe(prev_month_date.year, prev_month_date.month, closing_day)
+        end_date = get_date_safe(current_month_date.year, current_month_date.month, closing_day)
+
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+
+        # 1. Existing Transactions
+        # (Only relevant for near future, usually i=0 or i=1)
+        txns = db.query(models.Transaction).filter(
+            models.Transaction.user_id == current_user.id,
+            models.Transaction.credit_card_id == card_id,
+            models.Transaction.date >= start_date_str,
+            models.Transaction.date < end_date_str
+        ).all()
+
+        month_total = sum(t.amount for t in txns)
+
+        # 2. Recurring Rules
+        rules = db.query(models.RecurringRule).filter(
+            models.RecurringRule.user_id == current_user.id,
+            models.RecurringRule.credit_card_id == card_id,
+            models.RecurringRule.active == True
+        ).all()
+
+        for rule in rules:
+            match = re.search(r"BYMONTHDAY=(\d+)", rule.rrule)
+            if match:
+                day = int(match.group(1))
+                # Check if day falls in period [start_date, end_date)
+
+                candidates = []
+                try:
+                    c1 = datetime.date(start_date.year, start_date.month, day)
+                    candidates.append(c1)
+                except ValueError: pass
+
+                try:
+                    c2 = datetime.date(end_date.year, end_date.month, day)
+                    candidates.append(c2)
+                except ValueError: pass
+
+                added = False
+                for d in candidates:
+                    rule_end = datetime.datetime.strptime(rule.end_date, "%Y-%m-%d").date() if rule.end_date else None
+                    if start_date <= d < end_date:
+                        if rule_end and d > rule_end:
+                            continue
+
+                        # Avoid double counting if transaction already exists
+                        already_exists = any(
+                            t.recurring_rule_id == rule.id and
+                            t.date == d.strftime("%Y-%m-%d")
+                            for t in txns
+                        )
+
+                        if not already_exists and not added:
+                            month_total += rule.amount
+                            added = True # Rule triggers once per period usually
+
+        projections.append({
+            "month": target_date.strftime("%Y-%m"),
+            "total": month_total,
+            "due_date": get_date_safe(current_month_date.year, current_month_date.month, card.due_day).strftime("%Y-%m-%d")
+        })
+
+    return projections
 
 @app.post("/credit_cards/{card_id}/pay_invoice")
 def pay_credit_card_invoice(

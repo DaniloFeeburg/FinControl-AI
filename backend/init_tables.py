@@ -105,6 +105,17 @@ def init_db():
                     print("Migrating transactions: Adding credit_card_id column...")
                     conn.execute(text("ALTER TABLE transactions ADD COLUMN credit_card_id VARCHAR REFERENCES credit_cards(id)"))
                     conn.commit()
+                if "recurring_rule_id" not in cols:
+                    print("Migrating transactions: Adding recurring_rule_id column...")
+                    conn.execute(text("ALTER TABLE transactions ADD COLUMN recurring_rule_id VARCHAR REFERENCES recurring_rules(id)"))
+                    conn.commit()
+
+            if inspector.has_table("recurring_rules"):
+                cols = [c['name'] for c in inspector.get_columns("recurring_rules")]
+                if "credit_card_id" not in cols:
+                    print("Migrating recurring_rules: Adding credit_card_id column...")
+                    conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN credit_card_id VARCHAR REFERENCES credit_cards(id)"))
+                    conn.commit()
 
     except Exception as e:
         print(f"Error initializing/migrating data: {e}")
