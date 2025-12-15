@@ -307,79 +307,65 @@ def get_credit_card_statement(
 
     for rule in rules:
         # Check if rule executes within start_date and end_date
-        # Simple RRule parsing (Assuming FREQ=MONTHLY;BYMONTHDAY=X)
+        # Use simple parsing similar to other parts, but robust enough for monthly
         import re
         match = re.search(r"BYMONTHDAY=(\d+)", rule.rrule)
         if match:
             day = int(match.group(1))
 
-            # Check if this day exists in the period months
-            # Period spans across two months usually (e.g. 10 Oct - 10 Nov)
-            # Check candidate dates
-
-            # Candidate 1: In the start_date's month
-            try:
-                candidate1 = datetime.date(start_date.year, start_date.month, day)
-            except ValueError:
-                candidate1 = None # Invalid date (e.g. Feb 30)
-
-            # Candidate 2: In the end_date's month
-            # Note: end_date month might be same as start_date month if closing day is 1st and we look at same month?
-            # Usually period spans 2 months.
-            try:
-                candidate2 = datetime.date(end_date.year, end_date.month, day)
-            except ValueError:
-                candidate2 = None
-
+            # Generate candidates: day in start_date's month and day in end_date's month
             candidates = []
-            if candidate1: candidates.append(candidate1)
-            # Avoid adding same date twice if months are same (unlikely for standard statement logic but safe)
-            if candidate2 and (not candidate1 or candidate2 != candidate1): candidates.append(candidate2)
+
+            # Month 1
+            try:
+                candidates.append(datetime.date(start_date.year, start_date.month, day))
+            except ValueError:
+                pass # Invalid date
+
+            # Month 2 (if different)
+            if end_date.month != start_date.month or end_date.year != start_date.year:
+                try:
+                    candidates.append(datetime.date(end_date.year, end_date.month, day))
+                except ValueError:
+                    pass
 
             for d in candidates:
-                # Check if d is within [start_date, end_date)
-                # And check end_date of rule
-                rule_end = datetime.datetime.strptime(rule.end_date, "%Y-%m-%d").date() if rule.end_date else None
+                # Check bounds: [start_date, end_date)
+                if not (start_date <= d < end_date):
+                    continue
 
-                if start_date <= d < end_date:
-                    if rule_end and d > rule_end:
+                # Check rule end date
+                if rule.end_date:
+                    rule_end = datetime.datetime.strptime(rule.end_date, "%Y-%m-%d").date()
+                    if d > rule_end:
                         continue
 
-                    # Check if a real transaction already exists for this rule on this date
-                    # To avoid duplication if the rule already executed
-                    # We check if there is a transaction with this recurring_rule_id around this date
-                    # Or simply trust that if it's in `transactions` list (fetched above), we shouldn't add it.
-                    # But transactions list is filtered by date.
-                    # If the scheduler ran, the transaction exists and has credit_card_id. It is in `transactions`.
-                    # So we just need to check if we already have it in `statement_items`?
-                    # But `statement_items` are raw Transaction objects.
-                    # We need to check if any t in statement_items has recurring_rule_id == rule.id and date == d
+                # Check duplication
+                # Note: statement_items contains mixed types (SQLAlchemy objects and Dicts)
+                # We need to access attributes safely
+                already_exists = False
+                for t in statement_items:
+                    t_rule_id = getattr(t, 'recurring_rule_id', None) or (t.get('recurring_rule_id') if isinstance(t, dict) else None)
+                    t_date = getattr(t, 'date', None) or (t.get('date') if isinstance(t, dict) else None)
 
-                    already_exists = any(
-                        t.recurring_rule_id == rule.id and
-                        t.date == d.strftime("%Y-%m-%d")
-                        for t in statement_items
-                    )
+                    if t_rule_id == rule.id and str(t_date) == d.strftime("%Y-%m-%d"):
+                        already_exists = True
+                        break
 
-                    if not already_exists:
-                        # Create a "virtual" transaction for display
-                        # We use a dict or a mocked object. Pydantic schema is fine if we return list of schemas.
-                        # But we are returning a dict with "transactions": [objects].
-                        # Let's create a temporary object or dict.
-                        # Frontend expects Transaction interface.
-                        virtual_t = {
-                            "id": f"virtual-{rule.id}-{d}",
-                            "category_id": rule.category_id,
-                            "credit_card_id": card_id,
-                            "recurring_rule_id": rule.id,
-                            "amount": rule.amount,
-                            "date": d.strftime("%Y-%m-%d"),
-                            "description": f"{rule.description} (Recorrente)",
-                            "status": "PENDING", # Projected
-                            "created_at": datetime.datetime.now().isoformat()
-                        }
-                        statement_items.append(virtual_t)
-                        total_invoice += rule.amount
+                if not already_exists:
+                    virtual_t = {
+                        "id": f"virtual-{rule.id}-{d}",
+                        "category_id": rule.category_id,
+                        "credit_card_id": card_id,
+                        "recurring_rule_id": rule.id,
+                        "amount": rule.amount,
+                        "date": d.strftime("%Y-%m-%d"),
+                        "description": f"{rule.description} (Recorrente)",
+                        "status": "PENDING",
+                        "created_at": datetime.datetime.now().isoformat()
+                    }
+                    statement_items.append(virtual_t)
+                    total_invoice += rule.amount
 
     # Sort items by date
     statement_items.sort(key=lambda x: x['date'] if isinstance(x, dict) else x.date, reverse=True)

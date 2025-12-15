@@ -6,7 +6,7 @@ import { formatCurrency } from '../utils/projection';
 import { Transaction } from '../types';
 
 export const Transactions: React.FC = () => {
-  const { transactions, categories, creditCards, addTransaction, updateTransaction, deleteTransaction, addRecurringRule } = useStore();
+  const { transactions, categories, creditCards, recurringRules, addTransaction, updateTransaction, deleteTransaction, addRecurringRule } = useStore();
   const [filter, setFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   
   // Form State
@@ -56,6 +56,24 @@ export const Transactions: React.FC = () => {
     setCreditCardId(t.credit_card_id || '');
     setDate(t.date);
     setType(isExpense ? 'EXPENSE' : 'INCOME');
+
+    // Recurring Logic
+    if (t.recurring_rule_id) {
+        setCreateRecurring(true);
+        const rule = recurringRules.find(r => r.id === t.recurring_rule_id);
+        if (rule) {
+            const match = rule.rrule.match(/BYMONTHDAY=(\d+)/);
+            if (match) {
+                setRecurringDay(match[1]);
+            }
+            setRecurringEndDate(rule.end_date || '');
+        }
+    } else {
+        setCreateRecurring(false);
+        setRecurringDay('5');
+        setRecurringEndDate('');
+    }
+
     setIsFormOpen(true);
   };
 
@@ -194,57 +212,52 @@ export const Transactions: React.FC = () => {
             />
 
             <div className="border-t border-zinc-800 pt-4 space-y-3">
-              {editingId && transactions.find(t => t.id === editingId)?.recurring_rule_id ? (
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+              {editingId && transactions.find(t => t.id === editingId)?.recurring_rule_id && (
+                  <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                       <p className="text-xs text-emerald-400 font-medium flex items-center gap-2">
-                          🔄 Esta transação faz parte de uma recorrência.
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-1">
-                          Para alterar a regra, vá para o menu Recorrências.
+                          🔄 Esta transação já é recorrente.
                       </p>
                   </div>
-              ) : (
-                <>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={createRecurring}
-                      onChange={(e) => setCreateRecurring(e.target.checked)}
-                      className="rounded border-zinc-700 bg-zinc-900 text-purple-500"
-                    />
-                    <span className="text-sm text-zinc-300">
-                      🔄 Tornar esta transação recorrente
-                    </span>
-                  </label>
+              )}
 
-                  {createRecurring && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs text-zinc-400 mb-1 block">
-                          Repetir todo dia (1-31)
-                        </label>
-                        <Input
-                          type="number"
-                          min="1"
-                          max="31"
-                          value={recurringDay}
-                          onChange={(e) => setRecurringDay(e.target.value)}
-                          placeholder="Dia do mês"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-400 mb-1 block">
-                          Data Limite (Opcional)
-                        </label>
-                        <Input
-                          type="date"
-                          value={recurringEndDate}
-                          onChange={(e) => setRecurringEndDate(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createRecurring}
+                  onChange={(e) => setCreateRecurring(e.target.checked)}
+                  className="rounded border-zinc-700 bg-zinc-900 text-purple-500"
+                />
+                <span className="text-sm text-zinc-300">
+                  🔄 Tornar esta transação recorrente
+                </span>
+              </label>
+
+              {createRecurring && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">
+                      Repetir todo dia (1-31)
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={recurringDay}
+                      onChange={(e) => setRecurringDay(e.target.value)}
+                      placeholder="Dia do mês"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">
+                      Data Limite (Opcional)
+                    </label>
+                    <Input
+                      type="date"
+                      value={recurringEndDate}
+                      onChange={(e) => setRecurringEndDate(e.target.value)}
+                    />
+                  </div>
+                </div>
               )}
             </div>
             
