@@ -79,15 +79,18 @@ export const Transactions: React.FC = () => {
       status: (creditCardId ? 'PENDING' : 'PAID') as any, // CC transactions are pending until paid via invoice, usually
     };
 
+    let savedTransactionId = editingId;
+
     if (editingId) {
       await updateTransaction(editingId, transactionData);
     } else {
-      await addTransaction(transactionData);
+      const newTxn = await addTransaction(transactionData);
+      savedTransactionId = newTxn?.id || null;
     }
 
     // 🔥 NOVO: Criar regra recorrente se checkbox marcado (funciona para criar e editar)
-    if (createRecurring) {
-      await addRecurringRule({
+    if (createRecurring && savedTransactionId) {
+      const newRule = await addRecurringRule({
         category_id: catId || categories[0]?.id,
         credit_card_id: creditCardId || null,
         amount: finalAmount,
@@ -97,6 +100,11 @@ export const Transactions: React.FC = () => {
         auto_create: false,
         end_date: recurringEndDate || null
       });
+
+      if (newRule) {
+          // Link transaction to the new rule
+          await updateTransaction(savedTransactionId, { recurring_rule_id: newRule.id });
+      }
     }
     
     resetForm();

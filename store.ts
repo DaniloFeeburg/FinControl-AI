@@ -28,7 +28,7 @@ interface AppState {
   fetchAllData: () => Promise<void>;
 
   // Transactions
-  addTransaction: (t: Omit<Transaction, 'id' | 'created_at'>) => Promise<void>;
+  addTransaction: (t: Omit<Transaction, 'id' | 'created_at'>) => Promise<Transaction | undefined>;
   updateTransaction: (id: string, t: Partial<Omit<Transaction, 'id' | 'created_at'>>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
 
@@ -38,7 +38,7 @@ interface AppState {
   deleteCategory: (id: string) => Promise<void>;
 
   // Rules
-  addRecurringRule: (r: Omit<RecurringRule, 'id'>) => Promise<void>;
+  addRecurringRule: (r: Omit<RecurringRule, 'id'>) => Promise<RecurringRule | undefined>;
   updateRecurringRule: (id: string, r: Partial<Omit<RecurringRule, 'id'>>) => Promise<void>;
   deleteRecurringRule: (id: string) => Promise<void>;
 
@@ -213,8 +213,10 @@ export const useStore = create<AppState>((set, get) => ({
         set((state) => ({
             transactions: [newTransaction, ...state.transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         }));
+        return newTransaction;
     } catch (err) {
         console.error(err);
+        return undefined;
     }
   },
 
@@ -327,8 +329,10 @@ export const useStore = create<AppState>((set, get) => ({
           set((state) => ({
               recurringRules: [...state.recurringRules, newRule]
           }));
+          return newRule;
       } catch (err) {
           console.error(err);
+          return undefined;
       }
   },
 
