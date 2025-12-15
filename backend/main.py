@@ -183,3 +183,224 @@ class ReserveTransactionRequest(BaseModel):
 @app.post("/reserves/{reserve_id}/transactions", response_model=schemas.Reserve)
 def create_reserve_transaction(reserve_id: str, request: ReserveTransactionRequest, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
     return crud.create_reserve_history(db, reserve_id, request.amount, request.type, user_id=current_user.id)
+
+# Credit Cards Endpoints
+
+@app.get("/credit_cards", response_model=List[schemas.CreditCard])
+def read_credit_cards(db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    return crud.get_credit_cards(db, user_id=current_user.id)
+
+@app.post("/credit_cards", response_model=schemas.CreditCard)
+def create_credit_card(card: schemas.CreditCardCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    return crud.create_credit_card(db, card, user_id=current_user.id)
+
+@app.put("/credit_cards/{card_id}", response_model=schemas.CreditCard)
+def update_credit_card(card_id: str, card: schemas.CreditCardCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    return crud.update_credit_card(db, card_id, card, user_id=current_user.id)
+
+@app.delete("/credit_cards/{card_id}")
+def delete_credit_card(card_id: str, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    crud.delete_credit_card(db, card_id, user_id=current_user.id)
+    return {"ok": True}
+
+@app.get("/credit_cards/{card_id}/statement")
+def get_credit_card_statement(
+    card_id: str,
+    month: str, # YYYY-MM
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    import datetime
+    from dateutil.relativedelta import relativedelta
+
+    # 1. Get the credit card
+    card = db.query(models.CreditCard).filter(
+        models.CreditCard.id == card_id,
+        models.CreditCard.user_id == current_user.id
+    ).first()
+
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # 2. Calculate period range
+    # Period logic: closing_day of previous month to closing_day of current month (exclusive of end date usually, but depends on logic)
+    # Requeriment: "Entre dia de fechamento anterior e dia de fechamento atual"
+    # Example: Closing day 10. Statement for Nov (2023-11).
+    # Range: 2023-10-10 to 2023-11-09 (assuming closing day is the day the invoice closes, so transactions on that day might be next month or this month.
+    # Usually, closing day means transactions UP TO that day are in the invoice. Or closing day starts the NEW invoice?
+    # Common behavior: Closing day 10. Transactions up to day 10 (or 9) are in the closed invoice.
+    # Let's interpret: "Entre dia de fechamento anterior e dia de fechamento atual"
+    # Fatura de 10/Nov a 09/Dez -> This sounds like closing day is 10.
+
+    try:
+        target_date = datetime.datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM")
+
+    closing_day = card.closing_day
+
+    # Calculate start date (previous month closing day)
+    # If target is 2023-11, and closing day is 10.
+    # Start: 2023-10-10. End: 2023-11-09.
+
+    # Handling months with fewer days than closing_day
+    # logic to clamp day?
+
+    def get_date_safe(year, month, day):
+        try:
+            return datetime.date(year, month, day)
+        except ValueError:
+            # If day is out of range for month (e.g. 31 in Feb), return last day of month
+            import calendar
+            last_day = calendar.monthrange(year, month)[1]
+            return datetime.date(year, month, last_day)
+
+    # Current Statement Month: target_date (YYYY-MM)
+    # The statement "belongs" to YYYY-MM usually means it is DUE in YYYY-MM or closes in YYYY-MM.
+    # If due day is 15th and closing is 10th.
+    # Nov invoice: Closes Nov 10. Due Nov 15. Range: Oct 10 - Nov 09.
+
+    # Let's assume the 'month' param refers to the month where the invoice closes.
+
+    current_month_date = target_date
+    prev_month_date = target_date - relativedelta(months=1)
+
+    start_date = get_date_safe(prev_month_date.year, prev_month_date.month, closing_day)
+    end_date = get_date_safe(current_month_date.year, current_month_date.month, closing_day)
+
+    # The requirement says "Exemplo: Fechamento dia 10 -> Fatura de 10/Nov a 09/Dez"
+    # This implies the invoice CLOSES on Dec 10 (or around there) covers Nov 10 to Dec 09.
+    # If the user selects "December", they want to see the invoice closing in December?
+    # Or if they select "November", they want to see what they spent in November?
+    # Credit Card statements are usually referred by their Due Month or Closing Month.
+    # Let's assume Closing Month.
+
+    # Adjusted Logic based on "Fechamento dia 10 -> Fatura de 10/Nov a 09/Dez"
+    # This range (Nov 10 - Dec 09) usually results in an invoice closing on Dec 10.
+    # So if I request month=2023-12, I expect transactions from 2023-11-10 to 2023-12-09.
+
+    start_date_str = start_date.strftime("%Y-%m-%d")
+    # For end date, we usually exclude the closing day of the current month if the range starts on closing day of prev month?
+    # If range starts 10/Nov.
+    # Does it include 10/Nov? Yes.
+    # Does it include 10/Dec? No, that starts the next one.
+    # So range is >= Start and < End.
+
+    end_date_str = end_date.strftime("%Y-%m-%d")
+
+    # Query transactions
+    transactions = db.query(models.Transaction).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.credit_card_id == card_id,
+        models.Transaction.date >= start_date_str,
+        models.Transaction.date < end_date_str
+    ).order_by(models.Transaction.date.desc()).all()
+
+    total_spent = sum(t.amount for t in transactions if t.amount < 0) # Assuming expense is negative?
+    # Wait, existing app logic: Expenses are typically positive in DB but typed as EXPENSE?
+    # Let's check Transaction model/logic.
+    # Transaction has 'amount'. Usually in finance apps, amount is signed or there is a type.
+    # Category has 'type' (INCOME, EXPENSE).
+    # Transaction model doesn't store type, relies on Category.
+    # However, for credit card bill, it's mostly expenses. But refunds (income) reduce the bill.
+
+    statement_items = []
+    total_invoice = 0.0
+
+    for t in transactions:
+        # Fetch category type to determine sign if needed, or rely on amount.
+        # Check how amount is stored.
+        # In crud.py, create_transaction just saves amount.
+        # In frontend, Expense usually sent as negative? Or positive with type?
+        # Let's assume standard behavior: we sum amounts. If the app stores expenses as negative, simple sum works.
+        # If it stores as positive and uses Category.type to distinguish, we need to join Category.
+
+        # Let's peek at how `getBalance` works in store.ts
+        # getBalance: transactions.reduce((acc, t) => acc + t.amount, 0);
+        # This implies amount is signed (Income positive, Expense negative).
+
+        total_invoice += t.amount
+        statement_items.append(t)
+
+    # Invert total because usually we show invoice as a positive debt?
+    # If I spent -100, -50. Total is -150. Invoice value is 150.
+    # But let's return the raw sum and let frontend handle display.
+
+    status = "OPEN"
+    # Check if we are past the closing day
+    today = datetime.date.today()
+    if today >= end_date:
+        status = "CLOSED"
+        # If today > due_day (of current month_date), then OVERDUE?
+        due_date = get_date_safe(current_month_date.year, current_month_date.month, card.due_day)
+        if today > due_date:
+            status = "OVERDUE"
+
+    return {
+        "period": {"start": start_date_str, "end": end_date_str},
+        "transactions": statement_items,
+        "total": total_invoice,
+        "status": status,
+        "due_date": get_date_safe(current_month_date.year, current_month_date.month, card.due_day).strftime("%Y-%m-%d")
+    }
+
+@app.post("/credit_cards/{card_id}/pay_invoice")
+def pay_credit_card_invoice(
+    card_id: str,
+    month: str, # YYYY-MM
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    # Reuse logic to find transactions for the period
+    # Ideally refactor period logic to a helper, but for now duplicate to ensure safety
+    import datetime
+    from dateutil.relativedelta import relativedelta
+
+    card = db.query(models.CreditCard).filter(
+        models.CreditCard.id == card_id,
+        models.CreditCard.user_id == current_user.id
+    ).first()
+
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    try:
+        target_date = datetime.datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid month format")
+
+    closing_day = card.closing_day
+
+    def get_date_safe(year, month, day):
+        try:
+            return datetime.date(year, month, day)
+        except ValueError:
+            import calendar
+            last_day = calendar.monthrange(year, month)[1]
+            return datetime.date(year, month, last_day)
+
+    current_month_date = target_date
+    prev_month_date = target_date - relativedelta(months=1)
+
+    start_date = get_date_safe(prev_month_date.year, prev_month_date.month, closing_day)
+    end_date = get_date_safe(current_month_date.year, current_month_date.month, closing_day)
+
+    start_date_str = start_date.strftime("%Y-%m-%d")
+    end_date_str = end_date.strftime("%Y-%m-%d")
+
+    transactions = db.query(models.Transaction).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.credit_card_id == card_id,
+        models.Transaction.date >= start_date_str,
+        models.Transaction.date < end_date_str,
+        models.Transaction.status == 'PENDING'
+    ).all()
+
+    count = 0
+    for t in transactions:
+        t.status = 'PAID'
+        count += 1
+
+    db.commit()
+
+    return {"message": f"{count} transactions marked as paid", "count": count}

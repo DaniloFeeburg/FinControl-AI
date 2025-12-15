@@ -59,8 +59,44 @@ class Category(CategoryBase):
     class Config:
         from_attributes = True
 
+# Credit Card Schemas
+class CreditCardBase(BaseModel):
+    name: str
+    brand: str
+    credit_limit: float
+    due_day: int
+    closing_day: int
+    color: str
+    active: bool = True
+
+    @field_validator('due_day', 'closing_day')
+    def validate_days(cls, v):
+        if not (1 <= v <= 31):
+            raise ValueError('Dia deve ser entre 1 e 31')
+        return v
+
+    @field_validator('credit_limit')
+    def validate_limit(cls, v):
+        if v <= 0:
+            raise ValueError('Limite deve ser maior que zero')
+        return v
+
+class CreditCardCreate(CreditCardBase):
+    pass
+
+class CreditCardUpdate(CreditCardBase):
+    pass
+
+class CreditCard(CreditCardBase):
+    id: str
+    user_id: str
+
+    class Config:
+        from_attributes = True
+
 class TransactionBase(BaseModel):
     category_id: Optional[str] = None
+    credit_card_id: Optional[str] = None
     amount: float
     date: str
     description: str
