@@ -367,8 +367,27 @@ def get_credit_card_statement(
                     statement_items.append(virtual_t)
                     total_invoice += rule.amount
 
+    # Normalize transactions to list of dicts to ensure consistent serialization
+    normalized_items = []
+    for item in statement_items:
+        if isinstance(item, dict):
+            normalized_items.append(item)
+        else:
+            # SQLAlchemy Object -> Dict
+            normalized_items.append({
+                "id": item.id,
+                "category_id": item.category_id,
+                "credit_card_id": item.credit_card_id,
+                "recurring_rule_id": item.recurring_rule_id,
+                "amount": item.amount,
+                "date": item.date,
+                "description": item.description,
+                "status": item.status,
+                "created_at": item.created_at.isoformat() if hasattr(item.created_at, 'isoformat') else str(item.created_at)
+            })
+
     # Sort items by date
-    statement_items.sort(key=lambda x: x['date'] if isinstance(x, dict) else x.date, reverse=True)
+    normalized_items.sort(key=lambda x: x['date'], reverse=True)
 
     status = "OPEN"
     today = datetime.date.today()
@@ -380,7 +399,7 @@ def get_credit_card_statement(
 
     return {
         "period": {"start": start_date_str, "end": end_date_str},
-        "transactions": statement_items,
+        "transactions": normalized_items,
         "total": total_invoice,
         "status": status,
         "due_date": get_date_safe(current_month_date.year, current_month_date.month, card.due_day).strftime("%Y-%m-%d")
