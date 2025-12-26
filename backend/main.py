@@ -305,67 +305,53 @@ def get_credit_card_statement(
         models.RecurringRule.active == True
     ).all()
 
+    from dateutil.rrule import rrulestr
+    from datetime import datetime as dt
+
     for rule in rules:
-        # Check if rule executes within start_date and end_date
-        # Use simple parsing similar to other parts, but robust enough for monthly
-        import re
-        match = re.search(r"BYMONTHDAY=(\d+)", rule.rrule)
-        if match:
-            day = int(match.group(1))
+        try:
+            # Assumes rrule string from DB is RFC 5545 compliant and includes DTSTART
+            rrule_obj = rrulestr(rule.rrule)
+        except Exception:
+            continue
 
-            # Generate candidates: day in start_date's month and day in end_date's month
-            candidates = []
+        # Get occurrences for the statement period [start_date, end_date)
+        occurrences = rrule_obj.between(start_date, end_date, inc=True)
 
-            # Month 1
-            try:
-                candidates.append(datetime.date(start_date.year, start_date.month, day))
-            except ValueError:
-                pass # Invalid date
+        for occurrence_dt in occurrences:
+            d = occurrence_dt.date()
 
-            # Month 2 (if different)
-            if end_date.month != start_date.month or end_date.year != start_date.year:
-                try:
-                    candidates.append(datetime.date(end_date.year, end_date.month, day))
-                except ValueError:
-                    pass
+            # The period is [start_date, end_date), so exclude the closing day itself
+            if d >= end_date:
+                continue
 
-            for d in candidates:
-                # Check bounds: [start_date, end_date)
-                if not (start_date <= d < end_date):
+            # Check rule end date from our model
+            if rule.end_date:
+                rule_end = dt.strptime(rule.end_date, "%Y-%m-%d").date()
+                if d > rule_end:
                     continue
 
-                # Check rule end date
-                if rule.end_date:
-                    rule_end = datetime.datetime.strptime(rule.end_date, "%Y-%m-%d").date()
-                    if d > rule_end:
-                        continue
+            # Check duplication against existing real transactions
+            already_exists = any(
+                t.recurring_rule_id == rule.id and
+                t.date == d
+                for t in transactions
+            )
 
-                # Check duplication
-                # Note: statement_items contains mixed types (SQLAlchemy objects and Dicts)
-                # We need to access attributes safely
-                already_exists = False
-                for t in statement_items:
-                    t_rule_id = getattr(t, 'recurring_rule_id', None) or (t.get('recurring_rule_id') if isinstance(t, dict) else None)
-                    t_date = getattr(t, 'date', None) or (t.get('date') if isinstance(t, dict) else None)
-
-                    if t_rule_id == rule.id and str(t_date) == d.strftime("%Y-%m-%d"):
-                        already_exists = True
-                        break
-
-                if not already_exists:
-                    virtual_t = {
-                        "id": f"virtual-{rule.id}-{d}",
-                        "category_id": rule.category_id,
-                        "credit_card_id": card_id,
-                        "recurring_rule_id": rule.id,
-                        "amount": rule.amount,
-                        "date": d.strftime("%Y-%m-%d"),
-                        "description": f"{rule.description} (Recorrente)",
-                        "status": "PENDING",
-                        "created_at": datetime.datetime.now().isoformat()
-                    }
-                    statement_items.append(virtual_t)
-                    total_invoice += rule.amount
+            if not already_exists:
+                virtual_t = {
+                    "id": f"virtual-{rule.id}-{d.strftime('%Y-%m-%d')}",
+                    "category_id": rule.category_id,
+                    "credit_card_id": card_id,
+                    "recurring_rule_id": rule.id,
+                    "amount": rule.amount,
+                    "date": d.strftime("%Y-%m-%d"),
+                    "description": f"{rule.description} (Recorrente)",
+                    "status": "PENDING",
+                    "created_at": dt.now().isoformat()
+                }
+                statement_items.append(virtual_t)
+                total_invoice += rule.amount
 
     # Sort items by date
     statement_items.sort(key=lambda x: x['date'] if isinstance(x, dict) else x.date, reverse=True)
@@ -457,40 +443,39 @@ def get_credit_card_projection(
             models.RecurringRule.active == True
         ).all()
 
+        from dateutil.rrule import rrulestr
+        from datetime import datetime as dt
+
+        # Get existing transaction dates for this period to check for duplicates
+        existing_txn_dates = {
+            (t.recurring_rule_id, t.date)
+            for t in txns if t.recurring_rule_id
+        }
+
         for rule in rules:
-            match = re.search(r"BYMONTHDAY=(\d+)", rule.rrule)
-            if match:
-                day = int(match.group(1))
-                # Check if day falls in period [start_date, end_date)
+            try:
+                rrule_obj = rrulestr(rule.rrule)
+            except Exception:
+                continue
 
-                candidates = []
-                try:
-                    c1 = datetime.date(start_date.year, start_date.month, day)
-                    candidates.append(c1)
-                except ValueError: pass
+            # Get occurrences for the statement period [start_date, end_date)
+            occurrences = rrule_obj.between(start_date, end_date, inc=True)
 
-                try:
-                    c2 = datetime.date(end_date.year, end_date.month, day)
-                    candidates.append(c2)
-                except ValueError: pass
+            for occurrence_dt in occurrences:
+                d = occurrence_dt.date()
 
-                added = False
-                for d in candidates:
-                    rule_end = datetime.datetime.strptime(rule.end_date, "%Y-%m-%d").date() if rule.end_date else None
-                    if start_date <= d < end_date:
-                        if rule_end and d > rule_end:
-                            continue
+                if d >= end_date:
+                    continue
 
-                        # Avoid double counting if transaction already exists
-                        already_exists = any(
-                            t.recurring_rule_id == rule.id and
-                            t.date == d.strftime("%Y-%m-%d")
-                            for t in txns
-                        )
+                rule_end = dt.strptime(rule.end_date, "%Y-%m-%d").date() if rule.end_date else None
+                if rule_end and d > rule_end:
+                    continue
 
-                        if not already_exists and not added:
-                            month_total += rule.amount
-                            added = True # Rule triggers once per period usually
+                # Avoid double counting if transaction already exists
+                if (rule.id, d) in existing_txn_dates:
+                    continue
+
+                month_total += rule.amount
 
         projections.append({
             "month": target_date.strftime("%Y-%m"),
