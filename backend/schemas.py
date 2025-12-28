@@ -80,6 +80,13 @@ class CreditCardBase(BaseModel):
         if v <= 0:
             raise ValueError('Limite deve ser maior que zero')
         return v
+    
+    @field_validator('due_day')
+    def validate_due_after_closing(cls, v, info):
+        closing_day = info.data.get('closing_day')
+        if closing_day and v <= closing_day:
+            raise ValueError('Dia de vencimento deve ser posterior ao dia de fechamento')
+        return v
 
 class CreditCardCreate(CreditCardBase):
     pass
@@ -103,6 +110,18 @@ class TransactionBase(BaseModel):
     description: str
     status: str
 
+    @field_validator('amount')
+    def validate_amount(cls, v):
+        if v == 0:
+            raise ValueError('Valor não pode ser zero')
+        return v
+    
+    @field_validator('status')
+    def validate_status(cls, v):
+        if v not in ['PAID', 'PENDING']:
+            raise ValueError('Status deve ser PAID ou PENDING')
+        return v
+
 class TransactionCreate(TransactionBase):
     pass
 
@@ -125,6 +144,38 @@ class RecurringRuleBase(BaseModel):
     last_execution: Optional[str] = None
     next_execution: Optional[str] = None
     end_date: Optional[str] = None
+
+    @field_validator('rrule')
+    def validate_rrule(cls, v):
+        """Valida se a RRule é válida usando dateutil"""
+        if not v or v.strip() == '':
+            raise ValueError('RRule não pode estar vazia')
+        
+        try:
+            from dateutil.rrule import rrulestr
+            from datetime import datetime
+            
+            # Tenta parsear a RRule
+            rrulestr(v, dtstart=datetime.now())
+            
+            # Verifica se contém campos obrigatórios básicos
+            if 'FREQ=' not in v.upper():
+                raise ValueError('RRule deve conter FREQ (frequência)')
+            
+            return v
+        except ImportError:
+            # Se dateutil não estiver instalada, faz validação básica
+            if 'FREQ=' not in v.upper():
+                raise ValueError('RRule deve conter FREQ (frequência)')
+            return v
+        except Exception as e:
+            raise ValueError(f'RRule inválida: {str(e)}')
+    
+    @field_validator('amount')
+    def validate_amount_not_zero(cls, v):
+        if v == 0:
+            raise ValueError('Valor não pode ser zero')
+        return v
 
 class RecurringRuleCreate(RecurringRuleBase):
     pass

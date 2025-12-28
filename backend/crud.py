@@ -49,8 +49,64 @@ def delete_category(db: Session, category_id: str, user_id: str):
     return db_category
 
 # Transactions
-def get_transactions(db: Session, user_id: str):
-    return db.query(models.Transaction).filter(models.Transaction.user_id == user_id).order_by(models.Transaction.date.desc()).all()
+def get_transactions(
+    db: Session, 
+    user_id: str,
+    skip: int = 0,
+    limit: int = 100,
+    start_date: str = None,
+    end_date: str = None,
+    category_id: str = None,
+    status: str = None
+):
+    """
+    Retorna transações do usuário com suporte a paginação e filtros.
+    """
+    query = db.query(models.Transaction).filter(models.Transaction.user_id == user_id)
+    
+    # Aplicar filtros
+    if start_date:
+        query = query.filter(models.Transaction.date >= start_date)
+    
+    if end_date:
+        query = query.filter(models.Transaction.date <= end_date)
+    
+    if category_id:
+        query = query.filter(models.Transaction.category_id == category_id)
+    
+    if status:
+        query = query.filter(models.Transaction.status == status)
+    
+    # Ordenar por data (mais recentes primeiro) e aplicar paginação
+    return query.order_by(models.Transaction.date.desc()).offset(skip).limit(limit).all()
+
+def count_transactions(
+    db: Session,
+    user_id: str,
+    start_date: str = None,
+    end_date: str = None,
+    category_id: str = None,
+    status: str = None
+):
+    """
+    Retorna o total de transações do usuário com filtros aplicados.
+    """
+    query = db.query(models.Transaction).filter(models.Transaction.user_id == user_id)
+    
+    # Aplicar os mesmos filtros
+    if start_date:
+        query = query.filter(models.Transaction.date >= start_date)
+    
+    if end_date:
+        query = query.filter(models.Transaction.date <= end_date)
+    
+    if category_id:
+        query = query.filter(models.Transaction.category_id == category_id)
+    
+    if status:
+        query = query.filter(models.Transaction.status == status)
+    
+    return query.count()
 
 def create_transaction(db: Session, transaction: schemas.TransactionCreate, user_id: str):
     created_at = datetime.now().isoformat()

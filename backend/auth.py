@@ -7,9 +7,20 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from . import schemas, database, models
 import os
+import sys
 
 # Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+if not SECRET_KEY:
+    print("ERRO: Variável de ambiente SECRET_KEY não configurada!")
+    print("Gere uma chave segura com: python -c 'import secrets; print(secrets.token_urlsafe(32))'")
+    sys.exit(1)
+
+if len(SECRET_KEY) < 32:
+    print("ERRO: SECRET_KEY deve ter pelo menos 32 caracteres!")
+    sys.exit(1)
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 

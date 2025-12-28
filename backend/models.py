@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Date
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Date, Index
 from sqlalchemy.orm import relationship
 from .database import Base
 import datetime
@@ -35,6 +35,10 @@ class CreditCard(Base):
     transactions = relationship("Transaction", back_populates="credit_card")
     recurring_rules = relationship("RecurringRule", back_populates="credit_card")
 
+    __table_args__ = (
+        Index('idx_creditcard_user_active', 'user_id', 'active'),
+    )
+
 class Category(Base):
     __tablename__ = "categories"
 
@@ -49,6 +53,10 @@ class Category(Base):
     user = relationship("User", back_populates="categories")
     transactions = relationship("Transaction", back_populates="category")
     recurring_rules = relationship("RecurringRule", back_populates="category")
+
+    __table_args__ = (
+        Index('idx_category_user_type', 'user_id', 'type'),
+    )
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -68,6 +76,13 @@ class Transaction(Base):
     category = relationship("Category", back_populates="transactions")
     credit_card = relationship("CreditCard", back_populates="transactions")
     recurring_rule = relationship("RecurringRule", back_populates="transactions")
+
+    __table_args__ = (
+        Index('idx_transaction_user_date', 'user_id', 'date'),
+        Index('idx_transaction_user_category', 'user_id', 'category_id'),
+        Index('idx_transaction_user_card', 'user_id', 'credit_card_id'),
+        Index('idx_transaction_user_status', 'user_id', 'status'),
+    )
 
 class RecurringRule(Base):
     __tablename__ = "recurring_rules"
@@ -89,6 +104,11 @@ class RecurringRule(Base):
     category = relationship("Category", back_populates="recurring_rules")
     credit_card = relationship("CreditCard", back_populates="recurring_rules")
     transactions = relationship("Transaction", back_populates="recurring_rule")
+
+    __table_args__ = (
+        Index('idx_recurring_user_active', 'user_id', 'active'),
+        Index('idx_recurring_user_card', 'user_id', 'credit_card_id'),
+    )
 
 class Reserve(Base):
     __tablename__ = "reserves"

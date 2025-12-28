@@ -4,7 +4,6 @@ import { calculateProjection, formatCurrency } from '../utils/projection';
 import { Card, Button } from '../components/ui';
 import { TrendingUp, Wallet, Lock, Activity, Sparkles, PieChart as PieChartIcon, ArrowUpRight, ArrowDownLeft, Target } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
-import { GoogleGenAI } from '@google/genai';
 
 export const Dashboard: React.FC = () => {
   const { recurringRules, transactions, categories, reserves } = useStore();
@@ -148,48 +147,48 @@ export const Dashboard: React.FC = () => {
   const handleAiAnalysis = async () => {
     setIsAnalyzing(true);
     try {
-      const configResponse = await fetch('/api/config');
-      if (!configResponse.ok) throw new Error('Failed to fetch config');
-      const config = await configResponse.json();
-      
-      if (!config.gemini_api_key || config.gemini_api_key === '') {
-        setAiAnalysis("Chave de API do Gemini não configurada no servidor.");
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setAiAnalysis("Sessão expirada. Faça login novamente.");
         setIsAnalyzing(false);
         return;
       }
 
-      const ai = new GoogleGenAI({ apiKey: config.gemini_api_key });
-      
       const financialContext = `
         Mês Analisado: ${selectedDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
         Receita do Mês: ${formatCurrency(monthlyIncome)}
+        Despesas do Mês: ${formatCurrency(monthlyExpenses)}
         Saldo do Mês: ${formatCurrency(monthlyBalance)}
         Gasto Mensal Médio (6 meses): ${formatCurrency(monthlyComparison.reduce((acc, m) => acc + m.expense, 0) / 6)}
         Maiores Gastos (Categorias): ${expensesByCategory.slice(0,3).map(c => c.name).join(', ')}
-        Metas de Reserva: ${reserves.length} ativas
+        Metas de Reserva: ${reserves.length} ativas, Total: ${formatCurrency(totalReserves)}
       `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Analise as finanças: ${financialContext}. 
-
-Forneça uma análise em formato de lista numerada com EXATAMENTE 3 recomendações práticas e objetivas.
-Cada recomendação deve ter:
-- Um título em negrito (máximo 6 palavras)
-- Uma explicação clara em 1-2 frases
-
-Exemplo de formato:
-1. **Título da Dica**: Explicação breve e prática.
-2. **Título da Dica**: Explicação breve e prática.
-3. **Título da Dica**: Explicação breve e prática.
-
-Responda APENAS em português do Brasil e siga EXATAMENTE este formato.`,
+      const response = await fetch('/api/ai/analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          balance: totalWalletBalance,
+          monthly_income: monthlyIncome,
+          monthly_expenses: monthlyExpenses,
+          reserves_total: totalReserves,
+          context: financialContext
+        })
       });
 
-      setAiAnalysis(response.text);
-    } catch (error) {
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Erro ao gerar análise');
+      }
+
+      const data = await response.json();
+      setAiAnalysis(data.analysis);
+    } catch (error: any) {
       console.error(error);
-      setAiAnalysis("Não foi possível gerar insights. Tente novamente.");
+      setAiAnalysis(error.message || "Não foi possível gerar insights. Tente novamente.");
     } finally {
       setIsAnalyzing(false);
     }
