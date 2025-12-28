@@ -7,6 +7,7 @@ from . import models, schemas, crud, auth
 from .database import engine, get_db
 from contextlib import asynccontextmanager
 import asyncio
+import os
 from .scheduler import start_scheduler_loop
 
 models.Base.metadata.create_all(bind=engine)
@@ -23,21 +24,9 @@ app = FastAPI(lifespan=lifespan)
 def root():
     return {"message": "FinControl AI API is running"}
 
-@app.get("/config")
-def get_config():
-    """Endpoint para fornecer configurações públicas ao frontend"""
-    import os
-    return {
-        "gemini_api_key": os.getenv("GEMINI_API_KEY", "")
-    }
-
-# Allow CORS for frontend (assuming localhost or same origin)
-origins = [
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:8080",
-    "*" # Relaxed for now
-]
+# Allow CORS for frontend (configure via environment variable)
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8080")
+origins = [origin.strip() for origin in allowed_origins.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
@@ -93,8 +82,58 @@ def delete_category(category_id: str, db: Session = Depends(get_db), current_use
     return {"ok": True}
 
 @app.get("/transactions", response_model=List[schemas.Transaction])
-def read_transactions(db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
-    return crud.get_transactions(db, user_id=current_user.id)
+def read_transactions(
+    skip: int = 0,
+    limit: int = 100,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    category_id: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    """
+    Lista transações com suporte a paginação e filtros.
+    
+    - **skip**: Número de registros a pular (padrão: 0)
+    - **limit**: Número máximo de registros (padrão: 100, máximo: 500)
+    - **start_date**: Data inicial (YYYY-MM-DD)
+    - **end_date**: Data final (YYYY-MM-DD)
+    - **category_id**: Filtrar por categoria
+    - **status**: Filtrar por status (PAID/PENDING)
+    """
+    if limit > 500:
+        limit = 500
+    
+    return crud.get_transactions(
+        db, 
+        user_id=current_user.id,
+        skip=skip,
+        limit=limit,
+        start_date=start_date,
+        end_date=end_date,
+        category_id=category_id,
+        status=status
+    )
+
+@app.get("/transactions/count")
+def count_transactions(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    category_id: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    """Retorna o total de transações do usuário (útil para paginação)"""
+    return {"count": crud.count_transactions(
+        db,
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        category_id=category_id,
+        status=status
+    )}
 
 @app.post("/transactions", response_model=schemas.Transaction)
 def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
@@ -579,3 +618,72 @@ def pay_credit_card_invoice(
     db.commit()
 
     return {"message": f"{count} transactions marked as paid", "count": count}
+
+# AI Analysis Endpoint (Protected)
+class AIAnalysisRequest(BaseModel):
+    balance: float
+    monthly_income: float
+    monthly_expenses: float
+    reserves_total: float
+    context: Optional[str] = None
+
+@app.post("/ai/analysis")
+async def get_ai_analysis(
+    request: AIAnalysisRequest,
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    """
+    Endpoint protegido para análise financeira com IA.
+    A chave da API do Gemini fica apenas no backend.
+    """
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    
+    if not gemini_api_key:
+        raise HTTPException(
+            status_code=503, 
+            detail="Serviço de IA não configurado"
+        )
+    
+    try:
+        from google import generativeai as genai
+        
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        prompt = f"""
+Você é um consultor financeiro experiente. Analise os dados financeiros abaixo e forneça insights práticos e personalizados.
+
+**Dados Financeiros:**
+- Saldo Total: R$ {request.balance:.2f}
+- Receita Mensal: R$ {request.monthly_income:.2f}
+- Despesas Mensais: R$ {request.monthly_expenses:.2f}
+- Total em Reservas: R$ {request.reserves_total:.2f}
+
+{f"**Contexto adicional:** {request.context}" if request.context else ""}
+
+Forneça uma análise com:
+1. Diagnóstico da situação financeira atual
+2. Pontos de atenção e alertas
+3. Recomendações práticas e acionáveis
+4. Sugestões de metas financeiras
+
+Seja direto, prático e empático. Máximo 300 palavras.
+"""
+        
+        response = model.generate_content(prompt)
+        
+        return {
+            "analysis": response.text,
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="Biblioteca do Google Generative AI não instalada"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao gerar análise: {str(e)}"
+        )
