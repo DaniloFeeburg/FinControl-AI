@@ -10,10 +10,12 @@ import asyncio
 import os
 from .scheduler import start_scheduler_loop
 
-models.Base.metadata.create_all(bind=engine)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize database tables
+    # Moved here from module level to avoid import-time failures
+    models.Base.metadata.create_all(bind=engine)
+
     # Start the scheduler loop in the background
     asyncio.create_task(start_scheduler_loop())
     yield

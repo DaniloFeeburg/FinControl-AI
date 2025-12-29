@@ -36,9 +36,10 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Expose port 8080 (Cloud Run default)
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+# Health check - increased start-period to allow for database initialization
+# Check /api/ endpoint to verify backend is responding
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8080/api/ || exit 1
 
 # Start services via entrypoint
 CMD ["/app/entrypoint.sh"]
