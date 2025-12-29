@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
-from . import models, schemas, crud, auth
+from . import models, schemas, crud, auth, ofx_service
 from .database import engine, get_db
 from contextlib import asynccontextmanager
 import asyncio
@@ -686,4 +686,145 @@ Seja direto, prático e empático. Máximo 300 palavras.
         raise HTTPException(
             status_code=500,
             detail=f"Erro ao gerar análise: {str(e)}"
+        )
+
+# OFX Import Endpoints
+@app.post("/import/ofx/preview", response_model=schemas.ImportPreviewResponse)
+async def preview_ofx_import(
+    request: schemas.ImportPreviewRequest,
+    current_user: schemas.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Parse arquivo OFX e retorna preview das transações com sugestões de categorias
+    """
+    try:
+        # Parse do arquivo OFX
+        ofx_data = ofx_service.parse_ofx_file(request.file_content)
+
+        # Busca categorias do usuário
+        user_categories = crud.get_categories(db, user_id=current_user.id)
+        categories_for_ai = [
+            {"id": cat.id, "name": cat.name, "type": cat.type}
+            for cat in user_categories
+        ]
+
+        # Pega a chave da API do Gemini
+        gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+
+        # Processa cada transação
+        previews = []
+        duplicate_count = 0
+        new_count = 0
+
+        for ofx_txn in ofx_data.transactions:
+            # Detecta duplicatas
+            is_duplicate, duplicate_id = ofx_service.detect_duplicate(
+                db=db,
+                user_id=current_user.id,
+                amount=ofx_txn.amount,
+                date=ofx_txn.date,
+                description=ofx_txn.payee,
+                fitid=ofx_txn.fitid
+            )
+
+            if is_duplicate:
+                duplicate_count += 1
+            else:
+                new_count += 1
+
+            # Sugere categoria com IA
+            suggested_category_id, confidence = await ofx_service.suggest_category_with_ai(
+                description=ofx_txn.payee,
+                amount=ofx_txn.amount,
+                categories=categories_for_ai,
+                gemini_api_key=gemini_api_key
+            )
+
+            # Cria preview
+            preview = ofx_service.create_import_preview(
+                ofx_transaction=ofx_txn,
+                is_duplicate=is_duplicate,
+                duplicate_id=duplicate_id,
+                suggested_category_id=suggested_category_id,
+                confidence_score=confidence
+            )
+
+            previews.append(preview)
+
+        return schemas.ImportPreviewResponse(
+            account_info=ofx_data.account_info,
+            transactions=previews,
+            total_transactions=len(previews),
+            duplicate_count=duplicate_count,
+            new_count=new_count
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao processar arquivo OFX: {str(e)}"
+        )
+
+
+@app.post("/import/ofx/confirm", response_model=schemas.ImportConfirmationResponse)
+async def confirm_ofx_import(
+    request: schemas.ImportConfirmationRequest,
+    current_user: schemas.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Confirma e executa a importação das transações OFX
+    """
+    try:
+        imported_count = 0
+        skipped_count = 0
+        failed_count = 0
+        transaction_ids = []
+
+        for txn_data in request.transactions:
+            try:
+                # Verifica se deve pular duplicatas
+                if request.skip_duplicates and txn_data.get('is_duplicate', False):
+                    skipped_count += 1
+                    continue
+
+                # Cria a transação
+                transaction_create = schemas.TransactionCreate(
+                    category_id=txn_data.get('category_id'),
+                    credit_card_id=request.credit_card_id if request.credit_card_id else txn_data.get('credit_card_id'),
+                    amount=float(txn_data['amount']),
+                    date=txn_data['date'],
+                    description=txn_data['description'],
+                    status=txn_data.get('status', 'PAID')
+                )
+
+                # Cria no banco de dados
+                created_txn = crud.create_transaction(
+                    db=db,
+                    transaction=transaction_create,
+                    user_id=current_user.id
+                )
+
+                imported_count += 1
+                transaction_ids.append(created_txn.id)
+
+            except Exception as e:
+                print(f"Erro ao importar transação: {str(e)}")
+                failed_count += 1
+                continue
+
+        return schemas.ImportConfirmationResponse(
+            imported_count=imported_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count,
+            transaction_ids=transaction_ids
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao confirmar importação: {str(e)}"
         )

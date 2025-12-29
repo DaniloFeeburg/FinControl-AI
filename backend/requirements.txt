@@ -11,3 +11,4 @@ passlib==1.7.4
 python-multipart
 python-dateutil
 google-generativeai>=0.3.0
+ofxparse==0.21
