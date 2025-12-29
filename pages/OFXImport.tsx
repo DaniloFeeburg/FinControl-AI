@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Upload, AlertCircle, CheckCircle, XCircle, Loader2, FileText, CreditCard } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui';
-import useStore from '../store';
+import { useStore } from '../store';
 import type {
   ImportPreviewResponse,
   ImportTransactionPreview,
