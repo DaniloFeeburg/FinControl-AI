@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Upload, AlertCircle, CheckCircle, XCircle, Loader2, FileText, CreditCard } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui';
+import { Card } from '../components/ui';
 import { useStore } from '../store';
 import type {
   ImportPreviewResponse,
@@ -173,11 +173,8 @@ export default function OFXImport() {
       </div>
 
       {/* Upload Section */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>1. Selecione o arquivo OFX</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="mb-6 p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">1. Selecione o arquivo OFX</h3>
           <div className="space-y-4">
             {/* Seleção de Cartão de Crédito (Opcional) */}
             <div>
@@ -243,7 +240,6 @@ export default function OFXImport() {
               )}
             </button>
           </div>
-        </CardContent>
       </Card>
 
       {/* Error Message */}
@@ -266,11 +262,8 @@ export default function OFXImport() {
       {preview && (
         <>
           {/* Account Info */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Informações da Conta</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Card className="mb-6 p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">Informações da Conta</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
                   <p className="text-gray-600">Tipo de Conta</p>
@@ -292,15 +285,11 @@ export default function OFXImport() {
                   </p>
                 </div>
               </div>
-            </CardContent>
           </Card>
 
           {/* Transactions Table */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>2. Revise as transações ({editedTransactions.filter(t => !t.is_duplicate).length} para importar)</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <Card className="mb-6 p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">2. Revise as transações ({editedTransactions.filter(t => !t.is_duplicate).length} para importar)</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b">
@@ -372,7 +361,6 @@ export default function OFXImport() {
                   </tbody>
                 </table>
               </div>
-            </CardContent>
           </Card>
 
           {/* Confirm Button */}
