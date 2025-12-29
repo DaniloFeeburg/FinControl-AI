@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Upload, AlertCircle, CheckCircle, XCircle, Loader2, FileText, CreditCard } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui';
 import useStore from '../store';
@@ -11,7 +10,6 @@ import type {
 } from '../types';
 
 export default function OFXImport() {
-  const navigate = useNavigate();
   const { categories, creditCards } = useStore();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -135,7 +133,7 @@ export default function OFXImport() {
 
       // Aguarda 2 segundos e redireciona para a página de transações
       setTimeout(() => {
-        navigate('/transactions');
+        window.location.hash = '#/transactions';
       }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao importar transações');
