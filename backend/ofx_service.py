@@ -8,13 +8,13 @@ import base64
 import io
 from sqlalchemy.orm import Session
 
-from schemas import (
+from .schemas import (
     OFXTransactionParsed,
     OFXAccountInfo,
     OFXParseResponse,
     ImportTransactionPreview
 )
-import crud
+from . import crud
 
 
 def parse_ofx_file(file_content: str) -> OFXParseResponse:
