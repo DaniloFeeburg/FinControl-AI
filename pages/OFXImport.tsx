@@ -53,7 +53,8 @@ export default function OFXImport() {
       const base64Content = btoa(binary);
 
       // Faz o upload e recebe o preview
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/import/ofx/preview`, {
+      const API_URL = import.meta.env.VITE_API_URL || '/api';
+      const response = await fetch(`${API_URL}/import/ofx/preview`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -66,8 +67,16 @@ export default function OFXImport() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Erro ao processar arquivo OFX');
+        // Tenta parsear como JSON, se falhar mostra o texto bruto
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Erro ao processar arquivo OFX');
+        } else {
+          const errorText = await response.text();
+          console.error('Resposta não-JSON do servidor:', errorText);
+          throw new Error(`Erro do servidor (${response.status}): Verifique os logs do backend`);
+        }
       }
 
       const data: ImportPreviewResponse = await response.json();
@@ -115,7 +124,8 @@ export default function OFXImport() {
           is_duplicate: false
         }));
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/import/ofx/confirm`, {
+      const API_URL = import.meta.env.VITE_API_URL || '/api';
+      const response = await fetch(`${API_URL}/import/ofx/confirm`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
