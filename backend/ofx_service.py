@@ -209,45 +209,52 @@ async def suggest_category_with_ai(
         relevant_categories = [c for c in categories if c['type'] == transaction_type]
 
         if not relevant_categories:
+            print(f"[IA] Nenhuma categoria do tipo {transaction_type} disponível")
             return None, 0.0
 
-        # Prepara o prompt
-        categories_text = "\n".join([f"- {c['id']}: {c['name']}" for c in relevant_categories])
+        # Prepara o prompt - SIMPLIFICADO para melhor parsing
+        categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
 
-        prompt = f"""Você é um assistente financeiro especializado em categorização de transações.
+        prompt = f"""Categorize esta transação financeira brasileira.
 
-Descrição da transação: "{description}"
+Transação: "{description}"
 Valor: R$ {abs(amount):.2f} ({'receita' if amount > 0 else 'despesa'})
 
 Categorias disponíveis:
 {categories_text}
 
-Analise a descrição e sugira a categoria mais adequada. Responda APENAS com o ID da categoria seguido de um escore de confiança (0-1).
+Responda EXATAMENTE neste formato: ID_DA_CATEGORIA|CONFIANCA
+Exemplo: abc123|0.85
 
-Formato da resposta: category_id|confidence
-Exemplo: abc123|0.95
-
-Se não tiver certeza ou nenhuma categoria se encaixar bem, responda: none|0.0"""
+Se não tiver certeza, responda: none|0.0"""
 
         response = model.generate_content(prompt)
         result = response.text.strip()
 
-        # Parse da resposta
+        print(f"[IA] Descrição: {description[:50]}, Resposta: {result}")
+
+        # Parse da resposta com tratamento robusto
         if '|' in result:
             parts = result.split('|')
-            category_id = parts[0].strip()
-            confidence = float(parts[1].strip())
+            if len(parts) >= 2:
+                category_id = parts[0].strip()
+                try:
+                    confidence = float(parts[1].strip())
+                except:
+                    confidence = 0.0
 
-            # Valida se o category_id existe
-            if category_id == 'none' or category_id not in [c['id'] for c in relevant_categories]:
-                return None, 0.0
+                # Valida se o category_id existe
+                if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
+                    print(f"[IA] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
+                    return category_id, confidence
 
-            return category_id, confidence
-
+        print(f"[IA] ✗ Resposta inválida ou categoria não encontrada")
         return None, 0.0
 
     except Exception as e:
-        print(f"Erro ao sugerir categoria com IA: {str(e)}")
+        print(f"[IA] ERRO ao sugerir categoria: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return None, 0.0
 
 

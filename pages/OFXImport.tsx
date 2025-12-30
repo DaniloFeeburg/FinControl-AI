@@ -277,25 +277,31 @@ export default function OFXImport() {
       {preview && (
         <>
           {/* Account Info */}
-          <Card className="mb-6 p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Informações da Conta</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-500">Tipo de Conta</p>
-                  <p className="font-medium text-gray-900">{preview.account_info.account_type}</p>
+          <Card className="mb-6 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
+            <h3 className="text-lg font-semibold text-blue-900 mb-4 flex items-center gap-2">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+              Informações da Conta
+            </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
+                  <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Tipo de Conta</p>
+                  <p className="font-semibold text-blue-900 text-lg">{preview.account_info.account_type}</p>
                 </div>
-                <div>
-                  <p className="text-gray-500">Número da Conta</p>
-                  <p className="font-medium text-gray-900">{preview.account_info.account_id}</p>
+                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
+                  <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Número da Conta</p>
+                  <p className="font-semibold text-blue-900 text-lg">{preview.account_info.account_id}</p>
                 </div>
-                <div>
-                  <p className="text-gray-500">Total de Transações</p>
-                  <p className="font-medium text-gray-900">{preview.total_transactions}</p>
+                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
+                  <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Total de Transações</p>
+                  <p className="font-semibold text-blue-900 text-lg">{preview.total_transactions}</p>
                 </div>
-                <div>
-                  <p className="text-gray-500">Novas / Duplicadas</p>
-                  <p className="font-medium">
-                    <span className="text-green-600">{preview.new_count}</span> /{' '}
+                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
+                  <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Novas / Duplicadas</p>
+                  <p className="font-semibold text-lg">
+                    <span className="text-green-600">{preview.new_count}</span>
+                    <span className="text-gray-400 mx-1">/</span>
                     <span className="text-yellow-600">{preview.duplicate_count}</span>
                   </p>
                 </div>
@@ -307,22 +313,29 @@ export default function OFXImport() {
             <h3 className="text-lg font-semibold text-white mb-4">2. Revise as transações ({editedTransactions.filter(t => !t.is_duplicate).length} para importar)</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-blue-200">
                     <tr>
-                      <th className="px-4 py-3 text-left text-gray-900 font-semibold">Data</th>
-                      <th className="px-4 py-3 text-left text-gray-900 font-semibold">Descrição</th>
-                      <th className="px-4 py-3 text-left text-gray-900 font-semibold">Categoria</th>
-                      <th className="px-4 py-3 text-right text-gray-900 font-semibold">Valor</th>
-                      <th className="px-4 py-3 text-center text-gray-900 font-semibold">Status</th>
+                      <th className="px-4 py-3 text-left text-blue-900 font-semibold text-sm uppercase tracking-wide">Data</th>
+                      <th className="px-4 py-3 text-left text-blue-900 font-semibold text-sm uppercase tracking-wide">Descrição</th>
+                      <th className="px-4 py-3 text-left text-blue-900 font-semibold text-sm uppercase tracking-wide">Categoria</th>
+                      <th className="px-4 py-3 text-right text-blue-900 font-semibold text-sm uppercase tracking-wide">Valor</th>
+                      <th className="px-4 py-3 text-center text-blue-900 font-semibold text-sm uppercase tracking-wide">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {editedTransactions.map((txn, index) => (
                       <tr
                         key={index}
-                        className={txn.is_duplicate ? 'bg-yellow-50 opacity-60' : ''}
+                        className={txn.is_duplicate ? 'bg-yellow-50 opacity-60' : 'hover:bg-blue-50 transition-colors'}
                       >
-                        <td className="px-4 py-3 text-gray-900">{new Date(txn.date).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-600">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            {new Date(txn.date).toLocaleDateString('pt-BR')}
+                          </span>
+                        </td>
                         <td className="px-4 py-3">
                           <input
                             type="text"
@@ -351,8 +364,14 @@ export default function OFXImport() {
                             {getConfidenceBadge(txn.confidence_score)}
                           </div>
                         </td>
-                        <td className={`px-4 py-3 text-right font-medium ${txn.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          R$ {Math.abs(txn.amount).toFixed(2)}
+                        <td className="px-4 py-3 text-right">
+                          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full font-semibold text-sm ${
+                            txn.amount >= 0
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {txn.amount >= 0 ? '+' : '-'} R$ {Math.abs(txn.amount).toFixed(2)}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-center">
                           {txn.is_duplicate ? (
