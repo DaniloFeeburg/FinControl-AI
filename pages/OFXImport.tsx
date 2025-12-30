@@ -41,11 +41,16 @@ export default function OFXImport() {
     setError('');
 
     try {
-      // Lê o arquivo como texto
-      const fileContent = await file.text();
+      // Lê o arquivo como ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
 
-      // Converte para base64
-      const base64Content = btoa(fileContent);
+      // Converte ArrayBuffer para base64 (compatível com UTF-8)
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64Content = btoa(binary);
 
       // Faz o upload e recebe o preview
       const response = await fetch(`${import.meta.env.VITE_API_URL}/import/ofx/preview`, {
