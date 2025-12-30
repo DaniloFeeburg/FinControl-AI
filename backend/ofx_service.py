@@ -195,15 +195,15 @@ async def suggest_category_with_ai(
     Returns:
         Tuple (category_id, confidence_score)
     """
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
 
     if not gemini_api_key or not categories:
         return None, 0.0
 
     try:
-        genai.configure(api_key=gemini_api_key)
-        # Usar gemini-pro que é o modelo estável disponível
-        model = genai.GenerativeModel('gemini-pro')
+        # Inicializa o cliente com a API key
+        client = genai.Client(api_key=gemini_api_key)
 
         # Filtra categorias por tipo (receita ou despesa)
         transaction_type = "INCOME" if amount > 0 else "EXPENSE"
@@ -229,7 +229,12 @@ Exemplo: abc123|0.85
 
 Se não tiver certeza, responda: none|0.0"""
 
-        response = model.generate_content(prompt)
+        # Usa o modelo gemini-2.5-flash (modelo atualizado e disponível)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+
         result = response.text.strip()
 
         print(f"[IA] Descrição: {description[:50]}, Resposta: {result}")
