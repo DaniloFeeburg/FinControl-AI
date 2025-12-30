@@ -202,7 +202,8 @@ async def suggest_category_with_ai(
 
     try:
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Usar gemini-pro que é o modelo estável disponível
+        model = genai.GenerativeModel('gemini-pro')
 
         # Filtra categorias por tipo (receita ou despesa)
         transaction_type = "INCOME" if amount > 0 else "EXPENSE"
