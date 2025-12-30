@@ -63,9 +63,15 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
             # Descrição (payee pode ser None em alguns bancos)
             payee = txn.payee if txn.payee else (txn.memo if txn.memo else "Transação sem descrição")
 
+            # Converte o valor para float (alguns bancos brasileiros podem usar vírgula)
+            amount_value = txn.amount
+            if isinstance(amount_value, str):
+                # Remove pontos de milhares e substitui vírgula por ponto
+                amount_value = amount_value.replace('.', '').replace(',', '.')
+
             transactions.append(OFXTransactionParsed(
                 payee=str(payee).strip(),
-                amount=float(txn.amount),
+                amount=float(amount_value),
                 date=txn_date,
                 memo=str(txn.memo).strip() if txn.memo else None,
                 fitid=str(txn.id) if hasattr(txn, 'id') else None,
