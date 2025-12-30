@@ -181,7 +181,8 @@ async def suggest_category_with_ai(
     description: str,
     amount: float,
     categories: List[dict],
-    gemini_api_key: str
+    gemini_api_key: str,
+    timeout_seconds: int = 8
 ) -> Tuple[Optional[str], float]:
     """
     Usa Google Gemini para sugerir categoria baseado na descrição
@@ -191,10 +192,12 @@ async def suggest_category_with_ai(
         amount: Valor da transação (negativo = despesa, positivo = receita)
         categories: Lista de categorias disponíveis [{id, name, type}]
         gemini_api_key: Chave da API do Gemini
+        timeout_seconds: Timeout em segundos para a chamada da API (padrão: 8s)
 
     Returns:
         Tuple (category_id, confidence_score)
     """
+    import asyncio
     from google import genai
     from google.genai import types
 
@@ -202,21 +205,23 @@ async def suggest_category_with_ai(
         return None, 0.0
 
     try:
-        # Inicializa o cliente com a API key
-        client = genai.Client(api_key=gemini_api_key)
+        # Função interna para fazer a chamada síncrona
+        def _call_gemini():
+            # Inicializa o cliente com a API key
+            client = genai.Client(api_key=gemini_api_key)
 
-        # Filtra categorias por tipo (receita ou despesa)
-        transaction_type = "INCOME" if amount > 0 else "EXPENSE"
-        relevant_categories = [c for c in categories if c['type'] == transaction_type]
+            # Filtra categorias por tipo (receita ou despesa)
+            transaction_type = "INCOME" if amount > 0 else "EXPENSE"
+            relevant_categories = [c for c in categories if c['type'] == transaction_type]
 
-        if not relevant_categories:
-            print(f"[IA] Nenhuma categoria do tipo {transaction_type} disponível")
-            return None, 0.0
+            if not relevant_categories:
+                print(f"[IA] Nenhuma categoria do tipo {transaction_type} disponível")
+                return None, 0.0, []
 
-        # Prepara o prompt - SIMPLIFICADO para melhor parsing
-        categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
+            # Prepara o prompt - SIMPLIFICADO para melhor parsing
+            categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
 
-        prompt = f"""Categorize esta transação financeira brasileira.
+            prompt = f"""Categorize esta transação financeira brasileira.
 
 Transação: "{description}"
 Valor: R$ {abs(amount):.2f} ({'receita' if amount > 0 else 'despesa'})
@@ -229,13 +234,21 @@ Exemplo: abc123|0.85
 
 Se não tiver certeza, responda: none|0.0"""
 
-        # Usa o modelo gemini-2.5-flash (modelo atualizado e disponível)
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
+            # Usa o modelo gemini-2.5-flash (modelo atualizado e disponível)
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
 
-        result = response.text.strip()
+            result = response.text.strip()
+            return result, transaction_type, relevant_categories
+
+        # Executa em thread separada com timeout
+        loop = asyncio.get_event_loop()
+        result, transaction_type, relevant_categories = await asyncio.wait_for(
+            loop.run_in_executor(None, _call_gemini),
+            timeout=timeout_seconds
+        )
 
         print(f"[IA] Descrição: {description[:50]}, Resposta: {result}")
 
@@ -257,6 +270,9 @@ Se não tiver certeza, responda: none|0.0"""
         print(f"[IA] ✗ Resposta inválida ou categoria não encontrada")
         return None, 0.0
 
+    except asyncio.TimeoutError:
+        print(f"[IA] ⏱ Timeout ao categorizar: {description[:50]} (>{timeout_seconds}s)")
+        return None, 0.0
     except Exception as e:
         print(f"[IA] ERRO ao sugerir categoria: {str(e)}")
         import traceback

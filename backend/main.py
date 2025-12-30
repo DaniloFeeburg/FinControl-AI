@@ -714,13 +714,12 @@ async def preview_ofx_import(
         # Pega a chave da API do Gemini
         gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
-        # Processa cada transação
-        previews = []
+        # Detecta duplicatas para todas as transações primeiro (operação rápida)
+        transactions_metadata = []
         duplicate_count = 0
         new_count = 0
 
         for ofx_txn in ofx_data.transactions:
-            # Detecta duplicatas
             is_duplicate, duplicate_id = ofx_service.detect_duplicate(
                 db=db,
                 user_id=current_user.id,
@@ -735,23 +734,53 @@ async def preview_ofx_import(
             else:
                 new_count += 1
 
-            # Sugere categoria com IA
+            transactions_metadata.append({
+                "transaction": ofx_txn,
+                "is_duplicate": is_duplicate,
+                "duplicate_id": duplicate_id
+            })
+
+        # Processa categorizações EM PARALELO para todas as transações
+        # Limita a 5 chamadas simultâneas para não sobrecarregar a API
+        import asyncio
+
+        async def categorize_transaction(metadata):
             suggested_category_id, confidence = await ofx_service.suggest_category_with_ai(
-                description=ofx_txn.payee,
-                amount=ofx_txn.amount,
+                description=metadata["transaction"].payee,
+                amount=metadata["transaction"].amount,
                 categories=categories_for_ai,
                 gemini_api_key=gemini_api_key
             )
+            return suggested_category_id, confidence
 
-            # Cria preview
+        # Executa em lotes de 5 para evitar sobrecarga
+        batch_size = 5
+        all_categorizations = []
+
+        for i in range(0, len(transactions_metadata), batch_size):
+            batch = transactions_metadata[i:i + batch_size]
+            batch_results = await asyncio.gather(
+                *[categorize_transaction(meta) for meta in batch],
+                return_exceptions=True
+            )
+            all_categorizations.extend(batch_results)
+
+        # Cria previews com os resultados
+        previews = []
+        for metadata, categorization in zip(transactions_metadata, all_categorizations):
+            if isinstance(categorization, Exception):
+                # Se houve erro na categorização, usa None
+                suggested_category_id, confidence = None, 0.0
+            else:
+                suggested_category_id, confidence = categorization
+
             preview = ofx_service.create_import_preview(
-                ofx_transaction=ofx_txn,
-                is_duplicate=is_duplicate,
-                duplicate_id=duplicate_id,
+                ofx_transaction=metadata["transaction"],
+                is_duplicate=metadata["is_duplicate"],
+                duplicate_id=metadata["duplicate_id"],
                 suggested_category_id=suggested_category_id,
                 confidence_score=confidence
             )
-
             previews.append(preview)
 
         return schemas.ImportPreviewResponse(
