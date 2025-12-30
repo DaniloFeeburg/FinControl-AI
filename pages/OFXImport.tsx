@@ -199,7 +199,7 @@ export default function OFXImport() {
               <select
                 value={selectedCreditCard}
                 onChange={(e) => setSelectedCreditCard(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white text-gray-900"
                 disabled={loading || !!preview}
               >
                 <option value="">Nenhum (transações de débito)</option>
@@ -281,19 +281,19 @@ export default function OFXImport() {
             <h3 className="text-lg font-semibold text-white mb-4">Informações da Conta</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-600">Tipo de Conta</p>
-                  <p className="font-medium">{preview.account_info.account_type}</p>
+                  <p className="text-gray-500">Tipo de Conta</p>
+                  <p className="font-medium text-gray-900">{preview.account_info.account_type}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Número da Conta</p>
-                  <p className="font-medium">{preview.account_info.account_id}</p>
+                  <p className="text-gray-500">Número da Conta</p>
+                  <p className="font-medium text-gray-900">{preview.account_info.account_id}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Total de Transações</p>
-                  <p className="font-medium">{preview.total_transactions}</p>
+                  <p className="text-gray-500">Total de Transações</p>
+                  <p className="font-medium text-gray-900">{preview.total_transactions}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Novas / Duplicadas</p>
+                  <p className="text-gray-500">Novas / Duplicadas</p>
                   <p className="font-medium">
                     <span className="text-green-600">{preview.new_count}</span> /{' '}
                     <span className="text-yellow-600">{preview.duplicate_count}</span>
@@ -309,11 +309,11 @@ export default function OFXImport() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b">
                     <tr>
-                      <th className="px-4 py-3 text-left">Data</th>
-                      <th className="px-4 py-3 text-left">Descrição</th>
-                      <th className="px-4 py-3 text-left">Categoria</th>
-                      <th className="px-4 py-3 text-right">Valor</th>
-                      <th className="px-4 py-3 text-center">Status</th>
+                      <th className="px-4 py-3 text-left text-gray-900 font-semibold">Data</th>
+                      <th className="px-4 py-3 text-left text-gray-900 font-semibold">Descrição</th>
+                      <th className="px-4 py-3 text-left text-gray-900 font-semibold">Categoria</th>
+                      <th className="px-4 py-3 text-right text-gray-900 font-semibold">Valor</th>
+                      <th className="px-4 py-3 text-center text-gray-900 font-semibold">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -322,13 +322,13 @@ export default function OFXImport() {
                         key={index}
                         className={txn.is_duplicate ? 'bg-yellow-50 opacity-60' : ''}
                       >
-                        <td className="px-4 py-3">{new Date(txn.date).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-4 py-3 text-gray-900">{new Date(txn.date).toLocaleDateString('pt-BR')}</td>
                         <td className="px-4 py-3">
                           <input
                             type="text"
                             value={txn.suggested_description}
                             onChange={(e) => handleDescriptionChange(index, e.target.value)}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
                             disabled={txn.is_duplicate}
                           />
                         </td>
@@ -337,7 +337,7 @@ export default function OFXImport() {
                             <select
                               value={txn.suggested_category_id || ''}
                               onChange={(e) => handleCategoryChange(index, e.target.value)}
-                              className="border border-gray-300 rounded px-2 py-1 text-sm"
+                              className="border border-gray-300 rounded px-2 py-1 text-sm bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
                               disabled={txn.is_duplicate}
                             >
                               <option value="">Sem categoria</option>
