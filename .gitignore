@@ -27,3 +27,7 @@ __pycache__/
 
 # Claude Code configuration
 .claude.json
+
+# Scripts com API keys (NUNCA commitar)
+check_ai.py
+*_api_key*.py
