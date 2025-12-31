@@ -30,7 +30,21 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
     try:
         # Decodifica de base64
         ofx_bytes = base64.b64decode(file_content)
-        ofx_file = io.BytesIO(ofx_bytes)
+
+        # Tenta decodificar com diferentes encodings para lidar com caracteres especiais
+        ofx_text = None
+        for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
+            try:
+                ofx_text = ofx_bytes.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if ofx_text is None:
+            raise ValueError("Não foi possível decodificar o arquivo OFX. Encoding não suportado.")
+
+        # Re-encode para UTF-8 e cria o BytesIO
+        ofx_file = io.BytesIO(ofx_text.encode('utf-8'))
 
         # Parse do arquivo OFX
         ofx = OfxParser.parse(ofx_file)
