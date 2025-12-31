@@ -218,3 +218,67 @@ class Reserve(ReserveBase):
 
     class Config:
         from_attributes = True
+
+# OFX Import Schemas
+class OFXTransactionParsed(BaseModel):
+    """Transação parseada do arquivo OFX"""
+    payee: str  # Descrição da transação
+    amount: float  # Valor (negativo para débito, positivo para crédito)
+    date: str  # Data da transação (YYYY-MM-DD)
+    memo: Optional[str] = None  # Informações adicionais
+    fitid: Optional[str] = None  # ID único da transação no banco
+    check_num: Optional[str] = None  # Número do cheque (se aplicável)
+
+class OFXAccountInfo(BaseModel):
+    """Informações da conta do OFX"""
+    account_id: str  # Número da conta
+    routing_number: Optional[str] = None  # Código do banco
+    account_type: str  # CHECKING, SAVINGS, CREDITCARD
+    currency: str = "BRL"
+    bank_id: Optional[str] = None
+
+class OFXParseResponse(BaseModel):
+    """Resposta do parsing do arquivo OFX"""
+    account_info: OFXAccountInfo
+    transactions: List[OFXTransactionParsed]
+    start_date: str  # Data inicial do extrato
+    end_date: str  # Data final do extrato
+    balance: Optional[float] = None  # Saldo final
+
+class ImportTransactionPreview(BaseModel):
+    """Preview de uma transação antes da importação"""
+    ofx_data: OFXTransactionParsed  # Dados originais do OFX
+    suggested_category_id: Optional[str] = None  # Categoria sugerida pela IA
+    suggested_description: str  # Descrição limpa/formatada
+    amount: float  # Valor em float
+    date: str  # Data YYYY-MM-DD
+    status: str = "PAID"  # PAID ou PENDING
+    is_duplicate: bool = False  # Se já existe no sistema
+    duplicate_transaction_id: Optional[str] = None  # ID da transação duplicada
+    confidence_score: Optional[float] = None  # Confiança da sugestão da IA (0-1)
+
+class ImportPreviewRequest(BaseModel):
+    """Request para preview da importação"""
+    file_content: str  # Conteúdo do arquivo OFX em base64
+    credit_card_id: Optional[str] = None  # ID do cartão (se for importação de cartão)
+
+class ImportPreviewResponse(BaseModel):
+    """Response do preview da importação"""
+    account_info: OFXAccountInfo
+    transactions: List[ImportTransactionPreview]
+    total_transactions: int
+    duplicate_count: int
+    new_count: int
+
+class ImportConfirmationRequest(BaseModel):
+    """Request para confirmar importação"""
+    transactions: List[dict]  # Transações editadas pelo usuário
+    credit_card_id: Optional[str] = None  # ID do cartão (se aplicável)
+    skip_duplicates: bool = True  # Pular duplicatas automaticamente
+
+class ImportConfirmationResponse(BaseModel):
+    """Response da confirmação de importação"""
+    imported_count: int
+    skipped_count: int
+    failed_count: int
+    transaction_ids: List[str]  # IDs das transações criadas

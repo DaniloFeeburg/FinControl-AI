@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Receipt, Tags, PiggyBank, PieChart, Menu, X, Bot, LogOut, User as UserIcon, CalendarClock, CreditCard } from 'lucide-react';
+import { LayoutDashboard, Receipt, Tags, PiggyBank, PieChart, Menu, X, Bot, LogOut, User as UserIcon, CalendarClock, CreditCard, Upload } from 'lucide-react';
 import { useStore } from '../store';
 
 interface NavItemProps {
@@ -76,18 +76,25 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               active={currentPath === '#/' || currentPath === ''} 
               onClick={() => setIsOpen(false)}
             />
-            <NavItem 
-              icon={Receipt} 
-              label="Transações" 
-              href="#/transactions" 
-              active={currentPath === '#/transactions'} 
+            <NavItem
+              icon={Receipt}
+              label="Transações"
+              href="#/transactions"
+              active={currentPath === '#/transactions'}
               onClick={() => setIsOpen(false)}
             />
-            <NavItem 
-              icon={Tags} 
-              label="Categorias" 
-              href="#/categories" 
-              active={currentPath === '#/categories'} 
+            <NavItem
+              icon={Upload}
+              label="Importar OFX"
+              href="#/import"
+              active={currentPath === '#/import'}
+              onClick={() => setIsOpen(false)}
+            />
+            <NavItem
+              icon={Tags}
+              label="Categorias"
+              href="#/categories"
+              active={currentPath === '#/categories'}
               onClick={() => setIsOpen(false)}
             />
             <NavItem

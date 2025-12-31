@@ -73,3 +73,48 @@ export interface DailyProjection {
   balance: number;
   type: 'historical' | 'projected';
 }
+
+// OFX Import Types
+export interface OFXTransactionParsed {
+  payee: string;
+  amount: number;
+  date: string;
+  memo?: string | null;
+  fitid?: string | null;
+  check_num?: string | null;
+}
+
+export interface OFXAccountInfo {
+  account_id: string;
+  routing_number?: string | null;
+  account_type: string;
+  currency: string;
+  bank_id?: string | null;
+}
+
+export interface ImportTransactionPreview {
+  ofx_data: OFXTransactionParsed;
+  suggested_category_id?: string | null;
+  suggested_description: string;
+  amount: number;
+  date: string;
+  status: TransactionStatus;
+  is_duplicate: boolean;
+  duplicate_transaction_id?: string | null;
+  confidence_score?: number | null;
+}
+
+export interface ImportPreviewResponse {
+  account_info: OFXAccountInfo;
+  transactions: ImportTransactionPreview[];
+  total_transactions: number;
+  duplicate_count: number;
+  new_count: number;
+}
+
+export interface ImportConfirmationResponse {
+  imported_count: number;
+  skipped_count: number;
+  failed_count: number;
+  transaction_ids: string[];
+}
