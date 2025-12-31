@@ -181,25 +181,25 @@ export default function OFXImport() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Importar OFX</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="text-2xl font-bold text-white">Importar OFX</h1>
+        <p className="text-gray-400 mt-1">
           Importe transações de arquivos OFX exportados do seu banco
         </p>
       </div>
 
       {/* Upload Section */}
-      <Card className="mb-6 p-6">
+      <Card className="mb-6 p-6 bg-[#1a1f2e] border-gray-700">
         <h3 className="text-lg font-semibold text-white mb-4">1. Selecione o arquivo OFX</h3>
           <div className="space-y-4">
             {/* Seleção de Cartão de Crédito (Opcional) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Cartão de Crédito (opcional)
               </label>
               <select
                 value={selectedCreditCard}
                 onChange={(e) => setSelectedCreditCard(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white text-gray-900"
+                className="w-full bg-[#0f1419] border border-gray-600 text-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={loading || !!preview}
               >
                 <option value="">Nenhum (transações de débito)</option>
@@ -215,8 +215,8 @@ export default function OFXImport() {
             </div>
 
             {/* File Input */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-              <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center bg-[#0f1419] hover:bg-[#151b24] transition-colors">
+              <Upload className="mx-auto h-12 w-12 text-gray-500 mb-4" />
               <input
                 type="file"
                 accept=".ofx"
@@ -227,12 +227,12 @@ export default function OFXImport() {
               />
               <label
                 htmlFor="ofx-file-input"
-                className="cursor-pointer text-blue-600 hover:text-blue-700 font-medium"
+                className="cursor-pointer text-blue-400 hover:text-blue-500 font-medium"
               >
                 Clique para selecionar um arquivo OFX
               </label>
               {file && (
-                <div className="mt-4 flex items-center justify-center text-sm text-gray-600">
+                <div className="mt-4 flex items-center justify-center text-sm text-gray-300">
                   <FileText className="h-4 w-4 mr-2" />
                   {file.name}
                 </div>
@@ -243,7 +243,7 @@ export default function OFXImport() {
             <button
               onClick={handleUpload}
               disabled={!file || loading || !!preview}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
             >
               {loading ? (
                 <>
@@ -259,89 +259,50 @@ export default function OFXImport() {
 
       {/* Error Message */}
       {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
-          <AlertCircle className="h-5 w-5 text-red-600 mr-3 flex-shrink-0 mt-0.5" />
-          <div className="text-red-800">{error}</div>
+        <div className="mb-6 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg p-4 flex items-start">
+          <AlertCircle className="h-5 w-5 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
+          <div className="text-red-300">{error}</div>
         </div>
       )}
 
       {/* Success Message */}
       {success && (
-        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start">
-          <CheckCircle className="h-5 w-5 text-green-600 mr-3 flex-shrink-0 mt-0.5" />
-          <div className="text-green-800">{success}</div>
+        <div className="mb-6 bg-green-900 bg-opacity-20 border border-green-700 rounded-lg p-4 flex items-start">
+          <CheckCircle className="h-5 w-5 text-green-400 mr-3 flex-shrink-0 mt-0.5" />
+          <div className="text-green-300">{success}</div>
         </div>
       )}
 
       {/* Preview Section */}
       {preview && (
         <>
-          {/* Account Info */}
-          <Card className="mb-6 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
-            <h3 className="text-lg font-semibold text-blue-900 mb-4 flex items-center gap-2">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-              </svg>
-              Informações da Conta
-            </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
-                  <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Tipo de Conta</p>
-                  <p className="font-semibold text-blue-900 text-lg">{preview.account_info.account_type}</p>
-                </div>
-                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
-                  <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Número da Conta</p>
-                  <p className="font-semibold text-blue-900 text-lg">{preview.account_info.account_id}</p>
-                </div>
-                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
-                  <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Total de Transações</p>
-                  <p className="font-semibold text-blue-900 text-lg">{preview.total_transactions}</p>
-                </div>
-                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
-                  <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Novas / Duplicadas</p>
-                  <p className="font-semibold text-lg">
-                    <span className="text-green-600">{preview.new_count}</span>
-                    <span className="text-gray-400 mx-1">/</span>
-                    <span className="text-yellow-600">{preview.duplicate_count}</span>
-                  </p>
-                </div>
-              </div>
-          </Card>
-
           {/* Transactions Table */}
-          <Card className="mb-6 p-6">
+          <Card className="mb-6 p-6 bg-[#1a1f2e] border-gray-700">
             <h3 className="text-lg font-semibold text-white mb-4">2. Revise as transações ({editedTransactions.filter(t => !t.is_duplicate).length} para importar)</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-blue-200">
+                  <thead className="bg-[#0f1419] border-b border-gray-700">
                     <tr>
-                      <th className="px-4 py-3 text-left text-blue-900 font-semibold text-sm uppercase tracking-wide">Data</th>
-                      <th className="px-4 py-3 text-left text-blue-900 font-semibold text-sm uppercase tracking-wide">Descrição</th>
-                      <th className="px-4 py-3 text-left text-blue-900 font-semibold text-sm uppercase tracking-wide">Categoria</th>
-                      <th className="px-4 py-3 text-right text-blue-900 font-semibold text-sm uppercase tracking-wide">Valor</th>
-                      <th className="px-4 py-3 text-center text-blue-900 font-semibold text-sm uppercase tracking-wide">Status</th>
+                      <th className="px-4 py-3 text-left text-gray-300 font-medium">Data</th>
+                      <th className="px-4 py-3 text-left text-gray-300 font-medium">Descrição</th>
+                      <th className="px-4 py-3 text-left text-gray-300 font-medium">Categoria</th>
+                      <th className="px-4 py-3 text-right text-gray-300 font-medium">Valor</th>
+                      <th className="px-4 py-3 text-center text-gray-300 font-medium">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody className="divide-y divide-gray-700">
                     {editedTransactions.map((txn, index) => (
                       <tr
                         key={index}
-                        className={txn.is_duplicate ? 'bg-yellow-50 opacity-60' : 'hover:bg-blue-50 transition-colors'}
+                        className={txn.is_duplicate ? 'bg-yellow-900 bg-opacity-20 opacity-60' : 'hover:bg-[#0f1419] transition-colors'}
                       >
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-600">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            {new Date(txn.date).toLocaleDateString('pt-BR')}
-                          </span>
-                        </td>
+                        <td className="px-4 py-3 text-gray-300">{new Date(txn.date).toLocaleDateString('pt-BR')}</td>
                         <td className="px-4 py-3">
                           <input
                             type="text"
                             value={txn.suggested_description}
                             onChange={(e) => handleDescriptionChange(index, e.target.value)}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
+                            className="w-full bg-[#0f1419] border border-gray-600 text-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             disabled={txn.is_duplicate}
                           />
                         </td>
@@ -350,7 +311,7 @@ export default function OFXImport() {
                             <select
                               value={txn.suggested_category_id || ''}
                               onChange={(e) => handleCategoryChange(index, e.target.value)}
-                              className="border border-gray-300 rounded px-2 py-1 text-sm bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
+                              className="bg-[#0f1419] border border-gray-600 text-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               disabled={txn.is_duplicate}
                             >
                               <option value="">Sem categoria</option>
@@ -364,27 +325,21 @@ export default function OFXImport() {
                             {getConfidenceBadge(txn.confidence_score)}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full font-semibold text-sm ${
-                            txn.amount >= 0
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            {txn.amount >= 0 ? '+' : '-'} R$ {Math.abs(txn.amount).toFixed(2)}
-                          </span>
+                        <td className={`px-4 py-3 text-right font-medium ${txn.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          R$ {Math.abs(txn.amount).toFixed(2)}
                         </td>
                         <td className="px-4 py-3 text-center">
                           {txn.is_duplicate ? (
                             <button
                               onClick={() => handleToggleTransaction(index)}
-                              className="flex items-center gap-1 text-yellow-600 hover:text-yellow-700 mx-auto"
+                              className="flex items-center gap-1 text-yellow-500 hover:text-yellow-400 mx-auto transition-colors"
                               title="Duplicada - clique para importar mesmo assim"
                             >
                               <AlertCircle className="h-4 w-4" />
                               <span className="text-xs">Duplicada</span>
                             </button>
                           ) : (
-                            <div className="flex items-center gap-1 text-green-600 mx-auto">
+                            <div className="flex items-center gap-1 text-green-500 mx-auto">
                               <CheckCircle className="h-4 w-4" />
                               <span className="text-xs">Nova</span>
                             </div>
@@ -405,7 +360,7 @@ export default function OFXImport() {
                 setFile(null);
                 setEditedTransactions([]);
               }}
-              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-6 py-2 border border-gray-600 text-gray-300 rounded-lg hover:bg-[#0f1419] transition-colors"
               disabled={importing}
             >
               Cancelar
@@ -413,7 +368,7 @@ export default function OFXImport() {
             <button
               onClick={handleConfirmImport}
               disabled={importing || editedTransactions.filter(t => !t.is_duplicate).length === 0}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
             >
               {importing ? (
                 <>
