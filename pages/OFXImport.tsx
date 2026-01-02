@@ -326,7 +326,7 @@ export default function OFXImport() {
                           </div>
                         </td>
                         <td className={`px-4 py-3 text-right font-medium ${txn.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          R$ {Math.abs(txn.amount).toFixed(2)}
+                          R$ {Math.abs(txn.amount / 100).toFixed(2)}
                         </td>
                         <td className="px-4 py-3 text-center">
                           {txn.is_duplicate ? (
