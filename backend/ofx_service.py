@@ -109,9 +109,14 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
                 val_str = str(txn.amount).replace('.', '').replace(',', '.')
                 final_amount = float(val_str)
 
+            # IMPORTANTE: O sistema armazena valores em CENTAVOS no banco de dados.
+            # O frontend espera receber 1000.0 para exibir R$ 10,00.
+            # Portanto, precisamos multiplicar o valor em reais do OFX por 100.
+            final_amount_cents = final_amount * 100
+
             transactions.append(OFXTransactionParsed(
                 payee=str(payee).strip(),
-                amount=final_amount,
+                amount=final_amount_cents,
                 date=txn_date,
                 memo=str(txn.memo).strip() if txn.memo else None,
                 fitid=str(txn.id) if hasattr(txn, 'id') else None,

@@ -162,7 +162,7 @@ async def suggest_category(
     prompt = f"""Categorize esta transação financeira brasileira.
 
 Transação: "{description}"
-Valor: R$ {abs(amount):.2f} ({'receita' if amount > 0 else 'despesa'})
+Valor: R$ {abs(amount)/100:.2f} ({'receita' if amount > 0 else 'despesa'})
 
 Categorias disponíveis:
 {categories_text}{examples_text}
