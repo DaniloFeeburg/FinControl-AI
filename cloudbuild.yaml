@@ -1,54 +1,60 @@
 steps:
   # 0. Criar Repositório no Artifact Registry (se não existir)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         gcloud artifacts repositories describe $_AR_REPO --location=$_DEPLOY_REGION || \
         gcloud artifacts repositories create $_AR_REPO --repository-format=docker \
         --location=$_DEPLOY_REGION --description="Repository for FinControl AI"
 
   # 1. Build da Imagem Docker
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA', '.']
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "-t",
+        "$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA",
+        ".",
+      ]
 
   # 2. Push da Imagem para o Artifact Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA']
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      ["push", "$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA"]
 
   # 3. Deploy no Google Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: gcloud
     args:
-      - 'run'
-      - 'deploy'
-      - 'fincontrol-ai'
-      - '--image'
-      - '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA'
-      - '--region'
-      - '$_DEPLOY_REGION'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--port=8080'
-      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,SECRET_KEY=SECRET_KEY:latest,ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest'
-      - '--timeout=300'
-      - '--memory=1Gi'
-      - '--cpu=1'
-      - '--max-instances=10'
-      - '--min-instances=0'
-      - '--cpu-boost'
+      - "run"
+      - "deploy"
+      - "fincontrol-ai"
+      - "--image"
+      - "$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA"
+      - "--region"
+      - "$_DEPLOY_REGION"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+      - "--port=8080"
+      - "--set-secrets=DATABASE_URL=DATABASE_URL:latest,SECRET_KEY=SECRET_KEY:latest,ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest,GROQ_API_KEY=GROQ_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+      - "--timeout=300"
+      - "--memory=1Gi"
+      - "--cpu=1"
+      - "--max-instances=10"
+      - "--min-instances=0"
+      - "--cpu-boost"
 
 # Configuração de Substituições (Variáveis)
 substitutions:
-  _AR_HOSTNAME: 'us-central1-docker.pkg.dev' # Host do Artifact Registry
-  _AR_REPO: 'fincontrol-repo'                # Nome do seu repositório no Artifact Registry
-  _DEPLOY_REGION: 'us-central1'              # Região do Cloud Run
+  _AR_HOSTNAME: "us-central1-docker.pkg.dev" # Host do Artifact Registry
+  _AR_REPO: "fincontrol-repo" # Nome do seu repositório no Artifact Registry
+  _DEPLOY_REGION: "us-central1" # Região do Cloud Run
 
 options:
   logging: CLOUD_LOGGING_ONLY
 
 images:
-  - '$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA'
-  
+  - "$_AR_HOSTNAME/$PROJECT_ID/$_AR_REPO/fincontrol-ai:$COMMIT_SHA"

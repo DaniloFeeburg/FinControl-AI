@@ -195,34 +195,62 @@ async def suggest_category_with_ai(
     description: str,
     amount: float,
     categories: List[dict],
-    gemini_api_key: str,
-    timeout_seconds: int = 8
+    gemini_api_key: str = "",  # Mantido para compatibilidade, mas Groq é preferido
+    timeout_seconds: int = 10,
+    max_retries: int = 3,
+    groq_api_key: str = ""
 ) -> Tuple[Optional[str], float]:
     """
-    Usa Google Gemini para sugerir categoria baseado na descrição
+    Sugere categoria baseado na descrição usando IA.
+    Usa Groq (gratuito) como provedor principal, com fallback para Gemini.
 
     Args:
         description: Descrição da transação
         amount: Valor da transação (negativo = despesa, positivo = receita)
         categories: Lista de categorias disponíveis [{id, name, type}]
-        gemini_api_key: Chave da API do Gemini
-        timeout_seconds: Timeout em segundos para a chamada da API (padrão: 8s)
+        gemini_api_key: Chave da API do Gemini (fallback)
+        timeout_seconds: Timeout em segundos para a chamada da API (padrão: 10s)
+        max_retries: Número máximo de tentativas em caso de erro (padrão: 3)
+        groq_api_key: Chave da API do Groq (preferido)
 
     Returns:
         Tuple (category_id, confidence_score)
     """
     import asyncio
-    from google import genai
-    from google.genai import types
-
-    if not gemini_api_key or not categories:
+    import os
+    
+    # Obtém API keys das variáveis de ambiente se não fornecidas
+    groq_key = groq_api_key or os.getenv("GROQ_API_KEY", "")
+    gemini_key = gemini_api_key or os.getenv("GEMINI_API_KEY", "")
+    
+    if not categories:
         return None, 0.0
-
-    try:
-        # Função interna para fazer a chamada síncrona
-        def _call_gemini():
-            # Inicializa o cliente com a API key
-            client = genai.Client(api_key=gemini_api_key)
+    
+    # Tenta Groq primeiro (gratuito e rápido)
+    if groq_key:
+        try:
+            from .ai_groq import suggest_category
+            
+            category_id, confidence = await suggest_category(
+                description=description,
+                amount=amount,
+                categories=categories,
+                groq_api_key=groq_key,
+                timeout_seconds=timeout_seconds,
+                max_retries=max_retries
+            )
+            
+            if category_id:
+                return category_id, confidence
+                
+        except Exception as e:
+            print(f"[IA] Erro com Groq, tentando Gemini: {str(e)}")
+    
+    # Fallback: Gemini
+    if gemini_key:
+        try:
+            import time
+            from google import genai
 
             # Filtra categorias por tipo (receita ou despesa)
             transaction_type = "INCOME" if amount > 0 else "EXPENSE"
@@ -230,9 +258,9 @@ async def suggest_category_with_ai(
 
             if not relevant_categories:
                 print(f"[IA] Nenhuma categoria do tipo {transaction_type} disponível")
-                return None, 0.0, []
+                return None, 0.0
 
-            # Prepara o prompt - SIMPLIFICADO para melhor parsing
+            # Prepara o prompt
             categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
 
             prompt = f"""Categorize esta transação financeira brasileira.
@@ -248,50 +276,83 @@ Exemplo: abc123|0.85
 
 Se não tiver certeza, responda: none|0.0"""
 
-            # Usa o modelo gemini-2.5-flash (modelo atualizado e disponível)
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
+            # Função interna para fazer a chamada síncrona com retry
+            def _call_gemini_with_retry():
+                client = genai.Client(api_key=gemini_key)
+                last_exception = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=prompt
+                        )
+                        return response.text.strip()
+                    except Exception as e:
+                        last_exception = e
+                        error_str = str(e).lower()
+                        
+                        is_rate_limit = (
+                            '429' in error_str or 
+                            'rate' in error_str or 
+                            'quota' in error_str or
+                            'resource_exhausted' in error_str or
+                            'too many requests' in error_str
+                        )
+                        
+                        if is_rate_limit and attempt < max_retries - 1:
+                            wait_time = (2 ** attempt) * 1.0
+                            print(f"[IA-Gemini] ⚠ Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
+                            time.sleep(wait_time)
+                        elif not is_rate_limit:
+                            raise e
+                
+                if last_exception:
+                    raise last_exception
+                return None
+
+            # Executa em thread separada com timeout
+            loop = asyncio.get_event_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, _call_gemini_with_retry),
+                timeout=timeout_seconds * max_retries
             )
 
-            result = response.text.strip()
-            return result, transaction_type, relevant_categories
+            if result is None:
+                return None, 0.0
 
-        # Executa em thread separada com timeout
-        loop = asyncio.get_event_loop()
-        result, transaction_type, relevant_categories = await asyncio.wait_for(
-            loop.run_in_executor(None, _call_gemini),
-            timeout=timeout_seconds
-        )
+            print(f"[IA-Gemini] Descrição: {description[:50]}, Resposta: {result}")
 
-        print(f"[IA] Descrição: {description[:50]}, Resposta: {result}")
+            if '|' in result:
+                parts = result.split('|')
+                if len(parts) >= 2:
+                    category_id = parts[0].strip()
+                    try:
+                        confidence = float(parts[1].strip())
+                    except:
+                        confidence = 0.0
 
-        # Parse da resposta com tratamento robusto
-        if '|' in result:
-            parts = result.split('|')
-            if len(parts) >= 2:
-                category_id = parts[0].strip()
-                try:
-                    confidence = float(parts[1].strip())
-                except:
-                    confidence = 0.0
+                    if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
+                        print(f"[IA-Gemini] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
+                        return category_id, confidence
 
-                # Valida se o category_id existe
-                if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
-                    print(f"[IA] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
-                    return category_id, confidence
+            print(f"[IA-Gemini] ✗ Resposta inválida ou categoria não encontrada")
+            return None, 0.0
 
-        print(f"[IA] ✗ Resposta inválida ou categoria não encontrada")
-        return None, 0.0
-
-    except asyncio.TimeoutError:
-        print(f"[IA] ⏱ Timeout ao categorizar: {description[:50]} (>{timeout_seconds}s)")
-        return None, 0.0
-    except Exception as e:
-        print(f"[IA] ERRO ao sugerir categoria: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None, 0.0
+        except asyncio.TimeoutError:
+            print(f"[IA-Gemini] ⏱ Timeout ao categorizar: {description[:50]}")
+            return None, 0.0
+        except Exception as e:
+            error_str = str(e).lower()
+            if '429' in error_str or 'rate' in error_str or 'quota' in error_str:
+                print(f"[IA-Gemini] ⚠ Rate limit excedido: {description[:50]}")
+            else:
+                print(f"[IA-Gemini] ERRO ao sugerir categoria: {str(e)}")
+            return None, 0.0
+    
+    # Nenhum provedor configurado
+    print("[IA] Nenhum provedor de IA configurado (GROQ_API_KEY ou GEMINI_API_KEY)")
+    return None, 0.0
 
 
 def create_import_preview(

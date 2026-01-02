@@ -636,23 +636,47 @@ async def get_ai_analysis(
 ):
     """
     Endpoint protegido para análise financeira com IA.
-    A chave da API do Gemini fica apenas no backend.
+    Usa Groq (gratuito, 30 req/min) como provedor principal.
+    Fallback para Gemini se Groq não estiver configurado.
     """
+    import time
+    
+    groq_api_key = os.getenv("GROQ_API_KEY")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     
-    if not gemini_api_key:
-        raise HTTPException(
-            status_code=503, 
-            detail="Serviço de IA não configurado"
-        )
+    # Tenta Groq primeiro (gratuito e rápido)
+    if groq_api_key:
+        try:
+            from .ai_groq import get_financial_analysis
+            
+            analysis = await get_financial_analysis(
+                balance=request.balance,
+                monthly_income=request.monthly_income,
+                monthly_expenses=request.monthly_expenses,
+                reserves_total=request.reserves_total,
+                context=request.context,
+                groq_api_key=groq_api_key
+            )
+            
+            return {
+                "analysis": analysis,
+                "provider": "groq",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            print(f"[AI] Erro com Groq, tentando Gemini: {str(e)}")
+            # Fallback para Gemini
     
-    try:
-        from google import generativeai as genai
-        
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-pro')
-        
-        prompt = f"""
+    # Fallback: Gemini (se configurado)
+    if gemini_api_key:
+        try:
+            from google import generativeai as genai
+            
+            genai.configure(api_key=gemini_api_key)
+            model = genai.GenerativeModel('gemini-pro')
+            
+            prompt = f"""
 Você é um consultor financeiro experiente. Analise os dados financeiros abaixo e forneça insights práticos e personalizados.
 
 **Dados Financeiros:**
@@ -671,24 +695,31 @@ Forneça uma análise com:
 
 Seja direto, prático e empático. Máximo 300 palavras.
 """
-        
-        response = model.generate_content(prompt)
-        
-        return {
-            "analysis": response.text,
-            "timestamp": asyncio.get_event_loop().time()
-        }
-        
-    except ImportError:
-        raise HTTPException(
-            status_code=503,
-            detail="Biblioteca do Google Generative AI não instalada"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erro ao gerar análise: {str(e)}"
-        )
+            
+            response = model.generate_content(prompt)
+            
+            return {
+                "analysis": response.text,
+                "provider": "gemini",
+                "timestamp": time.time()
+            }
+            
+        except ImportError:
+            raise HTTPException(
+                status_code=503,
+                detail="Biblioteca do Google Generative AI não instalada"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro ao gerar análise: {str(e)}"
+            )
+    
+    # Nenhum provedor configurado
+    raise HTTPException(
+        status_code=503, 
+        detail="Serviço de IA não configurado. Configure GROQ_API_KEY ou GEMINI_API_KEY."
+    )
 
 # OFX Import Endpoints
 @app.post("/import/ofx/preview", response_model=schemas.ImportPreviewResponse)
@@ -741,7 +772,7 @@ async def preview_ofx_import(
             })
 
         # Processa categorizações EM PARALELO para todas as transações
-        # Limita a 5 chamadas simultâneas para não sobrecarregar a API
+        # Limita a 2 chamadas simultâneas para evitar rate limits da API Gemini
         import asyncio
 
         async def categorize_transaction(metadata):
@@ -753,8 +784,9 @@ async def preview_ofx_import(
             )
             return suggested_category_id, confidence
 
-        # Executa em lotes de 5 para evitar sobrecarga
-        batch_size = 5
+        # Executa em lotes de 2 para evitar sobrecarga (reduzido de 5)
+        # A API Gemini tem limites restritivos, especialmente no tier gratuito
+        batch_size = 2
         all_categorizations = []
 
         for i in range(0, len(transactions_metadata), batch_size):
@@ -764,6 +796,10 @@ async def preview_ofx_import(
                 return_exceptions=True
             )
             all_categorizations.extend(batch_results)
+            
+            # Adiciona delay entre batches para respeitar rate limits
+            if i + batch_size < len(transactions_metadata):
+                await asyncio.sleep(0.5)  # 500ms entre batches
 
         # Cria previews com os resultados
         previews = []
