@@ -636,18 +636,18 @@ async def get_ai_analysis(
 ):
     """
     Endpoint protegido para análise financeira com IA.
-    Usa Groq (gratuito, 30 req/min) como provedor principal.
-    Fallback para Gemini se Groq não estiver configurado.
+    Usa OpenRouter (Xiaomi MiMo, gratuito) como provedor principal.
+    Fallback para Gemini se OpenRouter não estiver configurado.
     """
     import time
     
-    groq_api_key = os.getenv("GROQ_API_KEY")
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     
-    # Tenta Groq primeiro (gratuito e rápido)
-    if groq_api_key:
+    # Tenta OpenRouter primeiro (gratuito e alta performance)
+    if openrouter_api_key:
         try:
-            from .ai_groq import get_financial_analysis
+            from .ai_openrouter import get_financial_analysis
             
             analysis = await get_financial_analysis(
                 balance=request.balance,
@@ -655,18 +655,18 @@ async def get_ai_analysis(
                 monthly_expenses=request.monthly_expenses,
                 reserves_total=request.reserves_total,
                 context=request.context,
-                groq_api_key=groq_api_key
+                openrouter_api_key=openrouter_api_key
             )
             
             return {
                 "analysis": analysis,
-                "provider": "groq",
+                "provider": "openrouter/xiaomi",
                 "timestamp": time.time()
             }
             
         except Exception as e:
-            print(f"[AI] Erro com Groq, tentando Gemini: {str(e)}")
-            # Fallback para Gemini
+            print(f"[AI] Erro com OpenRouter, tentando fallback: {str(e)}")
+            # Continua para o fallback
     
     # Fallback: Gemini (se configurado)
     if gemini_api_key:
@@ -718,7 +718,7 @@ Seja direto, prático e empático. Máximo 300 palavras.
     # Nenhum provedor configurado
     raise HTTPException(
         status_code=503, 
-        detail="Serviço de IA não configurado. Configure GROQ_API_KEY ou GEMINI_API_KEY."
+        detail="Serviço de IA não configurado. Configure OPENROUTER_API_KEY."
     )
 
 # OFX Import Endpoints
@@ -749,8 +749,16 @@ async def preview_ofx_import(
             for txt_desc, cat_name in previous_txns
         ]
 
-        # Pega a chave da API do Gemini
-        gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+        # Busca histórico de categorizações para aprendizado (few-shot)
+        previous_txns = crud.get_recent_transactions_with_category(db, user_id=current_user.id, limit=30)
+        previous_txns_data = [
+            {"description": txt_desc, "category_name": cat_name} 
+            for txt_desc, cat_name in previous_txns
+        ]
+
+        # Pega a chave da API do OpenRouter
+        # Fallback para Gemini mantido apenas como referência legado, mas OpenRouter é o principal
+        openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
 
         # Detecta duplicatas para todas as transações primeiro (operação rápida)
         transactions_metadata = []
@@ -779,7 +787,7 @@ async def preview_ofx_import(
             })
 
         # Processa categorizações EM PARALELO para transações não-duplicadas
-        # Groq tem limite de 30 req/min, podemos ser mais agressivos que com Gemini
+        # OpenRouter/Xiaomi é rápido, mantemos configurações agressivas
         import asyncio
 
         async def categorize_transaction(metadata):
@@ -792,7 +800,7 @@ async def preview_ofx_import(
                 amount=metadata["transaction"].amount,
                 categories=categories_for_ai,
                 previous_transactions=previous_txns_data,
-                gemini_api_key=gemini_api_key
+                openrouter_api_key=openrouter_api_key
             )
             return suggested_category_id, confidence
 

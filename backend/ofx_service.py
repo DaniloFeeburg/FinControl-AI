@@ -227,35 +227,34 @@ async def suggest_category_with_ai(
     amount: float,
     categories: List[dict],
     previous_transactions: List[dict] = [],
-    gemini_api_key: str = "",  # Mantido para compatibilidade, não usado atualmente
-    timeout_seconds: int = 10,
+    gemini_api_key: str = "",  # Mantido para compatibilidade
+    timeout_seconds: int = 15,
     max_retries: int = 3,
-    groq_api_key: str = ""
+    openrouter_api_key: str = ""
 ) -> Tuple[Optional[str], float]:
     """
     Sugere categoria baseado na descrição usando IA.
-    Usa apenas Groq (gratuito) como provedor, com aprendizado via exemplos.
+    Usa apenas OpenRouter (Xiaomi MiMo, gratuito) como provedor principal.
     """
     import asyncio
     import os
     
-    # Obtém API key do Groq
-    groq_key = groq_api_key or os.getenv("GROQ_API_KEY", "")
+    # Obtém API key do OpenRouter
+    openrouter_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
     
     if not categories:
         return None, 0.0
     
-    # Usa apenas Groq (fallback Gemini desabilitado temporariamente)
-    if groq_key:
+    if openrouter_key:
         try:
-            from .ai_groq import suggest_category
+            from .ai_openrouter import suggest_category
             
             category_id, confidence = await suggest_category(
                 description=description,
                 amount=amount,
                 categories=categories,
                 previous_transactions=previous_transactions,
-                groq_api_key=groq_key,
+                openrouter_api_key=openrouter_key,
                 timeout_seconds=timeout_seconds,
                 max_retries=max_retries
             )
@@ -263,11 +262,11 @@ async def suggest_category_with_ai(
             return category_id, confidence
                 
         except Exception as e:
-            print(f"[IA-GROQ] Erro ao sugerir categoria: {str(e)}")
+            print(f"[IA-OpenRouter] Erro ao sugerir categoria: {str(e)}")
             return None, 0.0
     
     # Nenhum provedor configurado
-    print("[IA] GROQ_API_KEY não configurada")
+    print("[IA] OPENROUTER_API_KEY não configurada")
     return None, 0.0
 
 

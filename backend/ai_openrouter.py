@@ -1,36 +1,36 @@
 """
-Serviço de IA usando Groq (GRATUITO e RÁPIDO)
-Substitui o Google Gemini para análises financeiras e categorização
+Serviço de IA usando OpenRouter (Xiaomi MiMo, etc.)
+Substitui Groq/Gemini como provedor principal.
 
-Usa a biblioteca oficial 'groq' do Python
-
-Limites Groq (Free Tier):
-- 30 requests/min
-- 14,400 requests/dia
-- Modelos: llama-3.3-70b-versatile, mixtral-8x7b, etc.
+Configuração:
+- Modelo: xiaomi/mimo-v2-flash:free (Gratuito, Rápido)
+- Roteamento: Prioriza latência, permite fallbacks
 """
 import os
 import asyncio
 from typing import Optional, List, Tuple
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"  # Modelo gratuito e poderoso
+# Constantes do OpenRouter
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_MODEL = "xiaomi/mimo-v2-flash:free"
 
-
-def _get_groq_client(api_key: Optional[str] = None):
+def _get_client(api_key: Optional[str] = None):
     """
-    Cria cliente Groq com a API key (limpa de caracteres inválidos)
+    Cria cliente OpenAI configurado para OpenRouter
     """
-    from groq import Groq
+    from openai import OpenAI
     
-    key = api_key or os.getenv("GROQ_API_KEY", "")
-    # Remove caracteres inválidos (quebras de linha, espaços)
+    key = api_key or os.getenv("OPENROUTER_API_KEY", "")
+    # Remove caracteres inválidos
     key = key.strip().replace('\r', '').replace('\n', '')
     
     if not key:
         return None
     
-    return Groq(api_key=key)
-
+    return OpenAI(
+        base_url=OPENROUTER_BASE_URL,
+        api_key=key
+    )
 
 async def get_financial_analysis(
     balance: float,
@@ -38,29 +38,28 @@ async def get_financial_analysis(
     monthly_expenses: float,
     reserves_total: float,
     context: Optional[str] = None,
-    groq_api_key: Optional[str] = None,
-    timeout_seconds: int = 30
+    openrouter_api_key: Optional[str] = None,
+    timeout_seconds: int = 45
 ) -> str:
     """
-    Gera análise financeira usando Groq (LLaMA 3.3 70B)
-    TOTALMENTE GRATUITO com 30 req/min
+    Gera análise financeira usando OpenRouter
     
     Args:
-        balance: Saldo total em reais
-        monthly_income: Receita mensal em reais
-        monthly_expenses: Despesas mensais em reais
-        reserves_total: Total em reservas em reais
+        balance: Saldo total em reais (float)
+        monthly_income: Receita mensal em reais (float)
+        monthly_expenses: Despesas mensais em reais (float)
+        reserves_total: Total em reservas em reais (float)
         context: Contexto adicional opcional
-        groq_api_key: Chave da API Groq
+        openrouter_api_key: Chave da API OpenRouter
         timeout_seconds: Timeout da requisição
     
     Returns:
         Texto da análise financeira
     """
-    client = _get_groq_client(groq_api_key)
+    client = _get_client(openrouter_api_key)
     
     if not client:
-        return "Configure a variável GROQ_API_KEY para habilitar análises inteligentes."
+        return "Configure a variável OPENROUTER_API_KEY para habilitar análises inteligentes."
 
     prompt = f"""Você é um consultor financeiro experiente. Analise os dados abaixo e forneça insights práticos.
 
@@ -78,12 +77,11 @@ Forneça uma análise com:
 3. Recomendações práticas e acionáveis
 4. Sugestões de metas financeiras
 
-Seja direto, prático e empático. Máximo 300 palavras."""
+Seja direto, prático e empático. Máximo 400 palavras."""
 
     try:
-        # Executa a chamada síncrona em uma thread separada
-        def _call_groq():
-            completion = client.chat.completions.create(
+        def _call_ai():
+            response = client.chat.completions.create(
                 model=DEFAULT_MODEL,
                 messages=[
                     {
@@ -96,14 +94,25 @@ Seja direto, prático e empático. Máximo 300 palavras."""
                     }
                 ],
                 temperature=0.7,
-                max_completion_tokens=1024,
-                top_p=1
+                max_tokens=1024,
+                top_p=1,
+                # Parâmetros específicos do OpenRouter
+                extra_body={
+                    "provider": {
+                        "sort": "latency",
+                        "allow_fallbacks": True
+                    }
+                },
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/DaniloFeeburg/FinControl-AI",
+                    "X-Title": "FinControl-AI"
+                }
             )
-            return completion.choices[0].message.content
+            return response.choices[0].message.content
 
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
-            loop.run_in_executor(None, _call_groq),
+            loop.run_in_executor(None, _call_ai),
             timeout=timeout_seconds
         )
         
@@ -112,7 +121,7 @@ Seja direto, prático e empático. Máximo 300 palavras."""
     except asyncio.TimeoutError:
         return "Timeout ao gerar análise. Tente novamente."
     except Exception as e:
-        print(f"[GROQ] Erro ao conectar: {str(e)}")
+        print(f"[OpenRouter] Erro ao conectar: {str(e)}")
         return f"Erro ao conectar com serviço de IA: {str(e)}"
 
 
@@ -121,30 +130,35 @@ async def suggest_category(
     amount: float,
     categories: List[dict],
     previous_transactions: List[dict] = [],
-    groq_api_key: Optional[str] = None,
-    timeout_seconds: int = 10,
+    openrouter_api_key: Optional[str] = None,
+    timeout_seconds: int = 20,
     max_retries: int = 3
 ) -> Tuple[Optional[str], float]:
     """
-    Sugere categoria usando Groq com aprendizado via exemplos (few-shot)
+    Sugere categoria usando OpenRouter (Xiaomi MiMo)
     
     Args:
         description: Descrição da transação
-        amount: Valor da transação
+        amount: Valor da transação (em CENTAVOS, será convertido para reais no prompt)
         categories: Lista de categorias disponíveis
-        previous_transactions: Lista de transações passadas [{'description': '...', 'category_name': '...'}]
-        groq_api_key: Chave API
+        previous_transactions: Exemplos para few-shot learning
+        openrouter_api_key: Chave API
+        timeout_seconds: Timeout
+        max_retries: Tentativas
     """
-    client = _get_groq_client(groq_api_key)
+    client = _get_client(openrouter_api_key)
     
     if not client or not categories:
         return None, 0.0
 
-    transaction_type = "INCOME" if amount > 0 else "EXPENSE"
+    # amount vem em centavos, converter para float
+    amount_in_cents = amount
+    transaction_type = "INCOME" if amount_in_cents > 0 else "EXPENSE"
+    
     relevant_categories = [c for c in categories if c['type'] == transaction_type]
 
     if not relevant_categories:
-        print(f"[GROQ] Nenhuma categoria do tipo {transaction_type} disponível")
+        print(f"[OpenRouter] Nenhuma categoria do tipo {transaction_type} disponível")
         return None, 0.0
 
     categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
@@ -159,10 +173,12 @@ async def suggest_category(
         if examples_list:
             examples_text = "\n\nExemplos de categorizações anteriores deste usuário:\n" + "\n".join(examples_list)
 
+    # Prompt
+    # Importante: amount_in_cents / 100 para exibir em Reais
     prompt = f"""Categorize esta transação financeira brasileira.
 
 Transação: "{description}"
-Valor: R$ {abs(amount)/100:.2f} ({'receita' if amount > 0 else 'despesa'})
+Valor: R$ {abs(amount_in_cents)/100:.2f} ({'receita' if amount_in_cents > 0 else 'despesa'})
 
 Categorias disponíveis:
 {categories_text}{examples_text}
@@ -176,9 +192,8 @@ Se não tiver certeza, responda: none|0.0"""
     
     for attempt in range(max_retries):
         try:
-            # Executa a chamada síncrona em uma thread separada
-            def _call_groq():
-                completion = client.chat.completions.create(
+            def _call_ai():
+                response = client.chat.completions.create(
                     model=DEFAULT_MODEL,
                     messages=[
                         {
@@ -190,20 +205,29 @@ Se não tiver certeza, responda: none|0.0"""
                             "content": prompt
                         }
                     ],
-                    temperature=0.3,
-                    max_completion_tokens=50,
-                    top_p=1
+                    temperature=0.1, # Temperatura baixa para consistência
+                    max_tokens=50,
+                    extra_body={
+                        "provider": {
+                            "sort": "latency",
+                            "allow_fallbacks": True
+                        }
+                    },
+                    extra_headers={
+                        "HTTP-Referer": "https://github.com/DaniloFeeburg/FinControl-AI",
+                        "X-Title": "FinControl-AI"
+                    }
                 )
-                return completion.choices[0].message.content
+                return response.choices[0].message.content
 
             loop = asyncio.get_event_loop()
             result = await asyncio.wait_for(
-                loop.run_in_executor(None, _call_groq),
+                loop.run_in_executor(None, _call_ai),
                 timeout=timeout_seconds
             )
             
             result = result.strip()
-            print(f"[GROQ] Descrição: {description[:50]}, Resposta: {result}")
+            print(f"[OpenRouter] Descrição: {description[:50]}, Resposta: {result}")
 
             if '|' in result:
                 parts = result.split('|')
@@ -215,10 +239,10 @@ Se não tiver certeza, responda: none|0.0"""
                         confidence = 0.0
 
                     if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
-                        print(f"[GROQ] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
+                        # print(f"[OpenRouter] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
                         return category_id, confidence
 
-            print(f"[GROQ] ✗ Resposta inválida ou categoria não encontrada")
+            print(f"[OpenRouter] ✗ Resposta inválida ou categoria não encontrada")
             return None, 0.0
 
         except asyncio.TimeoutError:
@@ -233,15 +257,15 @@ Se não tiver certeza, responda: none|0.0"""
             # Rate limit - aguarda e tenta novamente
             if 'rate' in error_str or '429' in error_str:
                 if attempt < max_retries - 1:
-                    wait_time = (2 ** attempt) * 1.0
-                    print(f"[GROQ] ⚠ Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
+                    wait_time = (2 ** attempt) * 1.5
+                    print(f"[OpenRouter] ⚠ Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
                     await asyncio.sleep(wait_time)
                     continue
             
-            print(f"[GROQ] Erro: {str(e)}")
+            print(f"[OpenRouter] Erro: {str(e)}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)
                 continue
 
-    print(f"[GROQ] ⏱ Falha após {max_retries} tentativas: {last_error}")
+    print(f"[OpenRouter] ⏱ Falha após {max_retries} tentativas: {last_error}")
     return None, 0.0

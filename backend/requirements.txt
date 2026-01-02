@@ -13,5 +13,5 @@ python-dateutil
 ofxparse==0.21
 
 # IA Providers
-groq>=0.4.0  # Biblioteca oficial Groq (gratuito, recomendado)
+openai>=1.0.0  # Para OpenRouter (Xiaomi MiMo, etc)
 google-genai>=0.2.0  # Para Gemini (fallback/opcional)
