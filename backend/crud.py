@@ -132,6 +132,24 @@ def delete_transaction(db: Session, transaction_id: str, user_id: str):
         db.commit()
     return db_transaction
 
+def get_recent_transactions_with_category(db: Session, user_id: str, limit: int = 50):
+    """
+    Retorna as transações mais recentes que possuem categoria atribuída.
+    Usado para dar contexto à IA (few-shot learning).
+    """
+    return db.query(
+        models.Transaction.description, 
+        models.Category.name.label("category_name")
+    ).join(
+        models.Category, 
+        models.Transaction.category_id == models.Category.id
+    ).filter(
+        models.Transaction.user_id == user_id,
+        models.Transaction.category_id.isnot(None)
+    ).order_by(
+        models.Transaction.date.desc()
+    ).limit(limit).all()
+
 # Recurring Rules
 def get_recurring_rules(db: Session, user_id: str):
     return db.query(models.RecurringRule).filter(models.RecurringRule.user_id == user_id).all()

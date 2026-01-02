@@ -120,23 +120,20 @@ async def suggest_category(
     description: str,
     amount: float,
     categories: List[dict],
+    previous_transactions: List[dict] = [],
     groq_api_key: Optional[str] = None,
     timeout_seconds: int = 10,
     max_retries: int = 3
 ) -> Tuple[Optional[str], float]:
     """
-    Sugere categoria usando Groq com retry e backoff
+    Sugere categoria usando Groq com aprendizado via exemplos (few-shot)
     
     Args:
         description: Descrição da transação
-        amount: Valor da transação (negativo = despesa, positivo = receita)
-        categories: Lista de categorias [{id, name, type}]
-        groq_api_key: Chave da API Groq
-        timeout_seconds: Timeout por tentativa
-        max_retries: Número máximo de tentativas
-    
-    Returns:
-        Tuple (category_id, confidence_score)
+        amount: Valor da transação
+        categories: Lista de categorias disponíveis
+        previous_transactions: Lista de transações passadas [{'description': '...', 'category_name': '...'}]
+        groq_api_key: Chave API
     """
     client = _get_groq_client(groq_api_key)
     
@@ -151,6 +148,16 @@ async def suggest_category(
         return None, 0.0
 
     categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
+    
+    # Prepara exemplos do histórico
+    examples_text = ""
+    if previous_transactions:
+        examples_list = []
+        for txn in previous_transactions:
+             examples_list.append(f"- \"{txn['description']}\" -> {txn['category_name']}")
+        
+        if examples_list:
+            examples_text = "\n\nExemplos de categorizações anteriores deste usuário:\n" + "\n".join(examples_list)
 
     prompt = f"""Categorize esta transação financeira brasileira.
 
@@ -158,7 +165,7 @@ Transação: "{description}"
 Valor: R$ {abs(amount):.2f} ({'receita' if amount > 0 else 'despesa'})
 
 Categorias disponíveis:
-{categories_text}
+{categories_text}{examples_text}
 
 Responda EXATAMENTE neste formato: ID_DA_CATEGORIA|CONFIANCA
 Exemplo: abc123|0.85

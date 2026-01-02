@@ -742,6 +742,13 @@ async def preview_ofx_import(
             for cat in user_categories
         ]
 
+        # Busca histórico de categorizações para aprendizado (few-shot)
+        previous_txns = crud.get_recent_transactions_with_category(db, user_id=current_user.id, limit=30)
+        previous_txns_data = [
+            {"description": txt_desc, "category_name": cat_name} 
+            for txt_desc, cat_name in previous_txns
+        ]
+
         # Pega a chave da API do Gemini
         gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
@@ -784,6 +791,7 @@ async def preview_ofx_import(
                 description=metadata["transaction"].payee,
                 amount=metadata["transaction"].amount,
                 categories=categories_for_ai,
+                previous_transactions=previous_txns_data,
                 gemini_api_key=gemini_api_key
             )
             return suggested_category_id, confidence

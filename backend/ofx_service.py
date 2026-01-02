@@ -77,15 +77,41 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
             # Descrição (payee pode ser None em alguns bancos)
             payee = txn.payee if txn.payee else (txn.memo if txn.memo else "Transação sem descrição")
 
-            # Converte o valor para float (alguns bancos brasileiros podem usar vírgula)
+            # Converte o valor para float de forma robusta
             amount_value = txn.amount
             if isinstance(amount_value, str):
-                # Remove pontos de milhares e substitui vírgula por ponto
-                amount_value = amount_value.replace('.', '').replace(',', '.')
+                # Tenta detectar formato
+                clean_val = amount_value.strip()
+                
+                # Caso 1: Formato PT-BR explícito (tem ponto e vírgula, vírgula é decimal)
+                # Ex: 1.234,56
+                if '.' in clean_val and ',' in clean_val:
+                    if clean_val.find(',') > clean_val.find('.'):
+                        amount_value = clean_val.replace('.', '').replace(',', '.')
+                    else:
+                        # Ex: 1,234.56 (US invertido/misturado?) -> Assume US
+                        amount_value = clean_val.replace(',', '')
+                
+                # Caso 2: Apenas vírgula (Ex: 1234,56 ou 12,34) -> Assume PT-BR se não for confuso
+                elif ',' in clean_val:
+                    amount_value = clean_val.replace(',', '.')
+                
+                # Caso 3: Apenas ponto (Ex: 1234.56) -> Assume US (padrão OFX)
+                # O código anterior removia o ponto, causando erro (9.98 -> 998.0)
+                # Mantemos o ponto como decimal
+                pass
+            
+            # Garante float
+            try:
+                final_amount = float(amount_value)
+            except ValueError:
+                # Fallback para o comportamento antigo se falhar
+                val_str = str(txn.amount).replace('.', '').replace(',', '.')
+                final_amount = float(val_str)
 
             transactions.append(OFXTransactionParsed(
                 payee=str(payee).strip(),
-                amount=float(amount_value),
+                amount=final_amount,
                 date=txn_date,
                 memo=str(txn.memo).strip() if txn.memo else None,
                 fitid=str(txn.id) if hasattr(txn, 'id') else None,
@@ -195,6 +221,7 @@ async def suggest_category_with_ai(
     description: str,
     amount: float,
     categories: List[dict],
+    previous_transactions: List[dict] = [],
     gemini_api_key: str = "",  # Mantido para compatibilidade, não usado atualmente
     timeout_seconds: int = 10,
     max_retries: int = 3,
@@ -202,19 +229,7 @@ async def suggest_category_with_ai(
 ) -> Tuple[Optional[str], float]:
     """
     Sugere categoria baseado na descrição usando IA.
-    Usa apenas Groq (gratuito) como provedor.
-
-    Args:
-        description: Descrição da transação
-        amount: Valor da transação (negativo = despesa, positivo = receita)
-        categories: Lista de categorias disponíveis [{id, name, type}]
-        gemini_api_key: [DESABILITADO TEMPORARIAMENTE] Chave da API do Gemini
-        timeout_seconds: Timeout em segundos para a chamada da API (padrão: 10s)
-        max_retries: Número máximo de tentativas em caso de erro (padrão: 3)
-        groq_api_key: Chave da API do Groq
-
-    Returns:
-        Tuple (category_id, confidence_score)
+    Usa apenas Groq (gratuito) como provedor, com aprendizado via exemplos.
     """
     import asyncio
     import os
@@ -234,6 +249,7 @@ async def suggest_category_with_ai(
                 description=description,
                 amount=amount,
                 categories=categories,
+                previous_transactions=previous_transactions,
                 groq_api_key=groq_key,
                 timeout_seconds=timeout_seconds,
                 max_retries=max_retries
