@@ -2,6 +2,8 @@
 Serviço de IA usando Groq (GRATUITO e RÁPIDO)
 Substitui o Google Gemini para análises financeiras e categorização
 
+Usa a biblioteca oficial 'groq' do Python
+
 Limites Groq (Free Tier):
 - 30 requests/min
 - 14,400 requests/dia
@@ -9,11 +11,25 @@ Limites Groq (Free Tier):
 """
 import os
 import asyncio
-import httpx
 from typing import Optional, List, Tuple
 
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "llama-3.3-70b-versatile"  # Modelo gratuito e poderoso
+
+
+def _get_groq_client(api_key: Optional[str] = None):
+    """
+    Cria cliente Groq com a API key (limpa de caracteres inválidos)
+    """
+    from groq import Groq
+    
+    key = api_key or os.getenv("GROQ_API_KEY", "")
+    # Remove caracteres inválidos (quebras de linha, espaços)
+    key = key.strip().replace('\r', '').replace('\n', '')
+    
+    if not key:
+        return None
+    
+    return Groq(api_key=key)
 
 
 async def get_financial_analysis(
@@ -41,9 +57,9 @@ async def get_financial_analysis(
     Returns:
         Texto da análise financeira
     """
-    api_key = groq_api_key or os.getenv("GROQ_API_KEY")
+    client = _get_groq_client(groq_api_key)
     
-    if not api_key:
+    if not client:
         return "Configure a variável GROQ_API_KEY para habilitar análises inteligentes."
 
     prompt = f"""Você é um consultor financeiro experiente. Analise os dados abaixo e forneça insights práticos.
@@ -65,42 +81,35 @@ Forneça uma análise com:
 Seja direto, prático e empático. Máximo 300 palavras."""
 
     try:
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-            response = await client.post(
-                GROQ_API_URL,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": DEFAULT_MODEL,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "Você é um consultor financeiro brasileiro especializado em finanças pessoais. Responda sempre em português brasileiro."
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 1024,
-                    "top_p": 1
-                }
+        # Executa a chamada síncrona em uma thread separada
+        def _call_groq():
+            completion = client.chat.completions.create(
+                model=DEFAULT_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Você é um consultor financeiro brasileiro especializado em finanças pessoais. Responda sempre em português brasileiro."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.7,
+                max_completion_tokens=1024,
+                top_p=1
             )
+            return completion.choices[0].message.content
 
-            if response.status_code == 429:
-                return "Limite de requisições atingido. Tente novamente em alguns segundos."
-            
-            if response.status_code != 200:
-                print(f"[GROQ] Erro HTTP {response.status_code}: {response.text}")
-                return f"Erro ao gerar análise. Código: {response.status_code}"
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, _call_groq),
+            timeout=timeout_seconds
+        )
+        
+        return result
 
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-
-    except httpx.TimeoutException:
+    except asyncio.TimeoutError:
         return "Timeout ao gerar análise. Tente novamente."
     except Exception as e:
         print(f"[GROQ] Erro ao conectar: {str(e)}")
@@ -129,9 +138,9 @@ async def suggest_category(
     Returns:
         Tuple (category_id, confidence_score)
     """
-    api_key = groq_api_key or os.getenv("GROQ_API_KEY")
+    client = _get_groq_client(groq_api_key)
     
-    if not api_key or not categories:
+    if not client or not categories:
         return None, 0.0
 
     transaction_type = "INCOME" if amount > 0 else "EXPENSE"
@@ -160,73 +169,68 @@ Se não tiver certeza, responda: none|0.0"""
     
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-                response = await client.post(
-                    GROQ_API_URL,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": DEFAULT_MODEL,
-                        "messages": [
-                            {
-                                "role": "system", 
-                                "content": "Você é um assistente de categorização financeira. Responda apenas no formato solicitado."
-                            },
-                            {
-                                "role": "user", 
-                                "content": prompt
-                            }
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 50
-                    }
+            # Executa a chamada síncrona em uma thread separada
+            def _call_groq():
+                completion = client.chat.completions.create(
+                    model=DEFAULT_MODEL,
+                    messages=[
+                        {
+                            "role": "system", 
+                            "content": "Você é um assistente de categorização financeira. Responda apenas no formato solicitado."
+                        },
+                        {
+                            "role": "user", 
+                            "content": prompt
+                        }
+                    ],
+                    temperature=0.3,
+                    max_completion_tokens=50,
+                    top_p=1
                 )
+                return completion.choices[0].message.content
 
-                # Rate limit - aguarda e tenta novamente
-                if response.status_code == 429:
-                    if attempt < max_retries - 1:
-                        wait_time = (2 ** attempt) * 1.0
-                        print(f"[GROQ] ⚠ Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
-                        await asyncio.sleep(wait_time)
-                        continue
-                    else:
-                        print(f"[GROQ] ⚠ Rate limit excedido após {max_retries} tentativas")
-                        return None, 0.0
+            loop = asyncio.get_event_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, _call_groq),
+                timeout=timeout_seconds
+            )
+            
+            result = result.strip()
+            print(f"[GROQ] Descrição: {description[:50]}, Resposta: {result}")
 
-                if response.status_code != 200:
-                    print(f"[GROQ] Erro HTTP {response.status_code}: {response.text}")
-                    return None, 0.0
+            if '|' in result:
+                parts = result.split('|')
+                if len(parts) >= 2:
+                    category_id = parts[0].strip()
+                    try:
+                        confidence = float(parts[1].strip())
+                    except ValueError:
+                        confidence = 0.0
 
-                data = response.json()
-                result = data["choices"][0]["message"]["content"].strip()
+                    if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
+                        print(f"[GROQ] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
+                        return category_id, confidence
 
-                print(f"[GROQ] Descrição: {description[:50]}, Resposta: {result}")
+            print(f"[GROQ] ✗ Resposta inválida ou categoria não encontrada")
+            return None, 0.0
 
-                if '|' in result:
-                    parts = result.split('|')
-                    if len(parts) >= 2:
-                        category_id = parts[0].strip()
-                        try:
-                            confidence = float(parts[1].strip())
-                        except ValueError:
-                            confidence = 0.0
-
-                        if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
-                            print(f"[GROQ] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
-                            return category_id, confidence
-
-                print(f"[GROQ] ✗ Resposta inválida ou categoria não encontrada")
-                return None, 0.0
-
-        except httpx.TimeoutException:
+        except asyncio.TimeoutError:
             last_error = "Timeout"
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)
                 continue
         except Exception as e:
+            error_str = str(e).lower()
             last_error = str(e)
+            
+            # Rate limit - aguarda e tenta novamente
+            if 'rate' in error_str or '429' in error_str:
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 1.0
+                    print(f"[GROQ] ⚠ Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+                    continue
+            
             print(f"[GROQ] Erro: {str(e)}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)

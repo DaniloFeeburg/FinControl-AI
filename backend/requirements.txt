@@ -13,5 +13,5 @@ python-dateutil
 ofxparse==0.21
 
 # IA Providers
-httpx==0.27.0  # Para Groq (gratuito, recomendado)
+groq>=0.4.0  # Biblioteca oficial Groq (gratuito, recomendado)
 google-genai>=0.2.0  # Para Gemini (fallback/opcional)
