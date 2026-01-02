@@ -771,11 +771,15 @@ async def preview_ofx_import(
                 "duplicate_id": duplicate_id
             })
 
-        # Processa categorizações EM PARALELO para todas as transações
-        # Limita a 2 chamadas simultâneas para evitar rate limits da API Gemini
+        # Processa categorizações EM PARALELO para transações não-duplicadas
+        # Groq tem limite de 30 req/min, podemos ser mais agressivos que com Gemini
         import asyncio
 
         async def categorize_transaction(metadata):
+            # Pula duplicatas - não precisa categorizar
+            if metadata["is_duplicate"]:
+                return None, 0.0
+            
             suggested_category_id, confidence = await ofx_service.suggest_category_with_ai(
                 description=metadata["transaction"].payee,
                 amount=metadata["transaction"].amount,
@@ -784,31 +788,48 @@ async def preview_ofx_import(
             )
             return suggested_category_id, confidence
 
-        # Executa em lotes de 2 para evitar sobrecarga (reduzido de 5)
-        # A API Gemini tem limites restritivos, especialmente no tier gratuito
-        batch_size = 2
-        all_categorizations = []
+        # Limita categorização por IA para evitar timeout
+        # Transações além do limite ficarão sem sugestão (usuário pode categorizar manualmente)
+        MAX_AI_CATEGORIZATIONS = 50
+        transactions_to_categorize = [
+            meta for meta in transactions_metadata 
+            if not meta["is_duplicate"]
+        ][:MAX_AI_CATEGORIZATIONS]
+        
+        # Log para debug
+        total_txns = len(transactions_metadata)
+        to_categorize = len(transactions_to_categorize)
+        print(f"[OFX] Total: {total_txns} transações, Categorizando: {to_categorize} (limite: {MAX_AI_CATEGORIZATIONS})")
 
-        for i in range(0, len(transactions_metadata), batch_size):
-            batch = transactions_metadata[i:i + batch_size]
+        # Executa em lotes de 5 (Groq suporta 30 req/min)
+        batch_size = 5
+        categorization_results = {}
+
+        for i in range(0, len(transactions_to_categorize), batch_size):
+            batch = transactions_to_categorize[i:i + batch_size]
             batch_results = await asyncio.gather(
                 *[categorize_transaction(meta) for meta in batch],
                 return_exceptions=True
             )
-            all_categorizations.extend(batch_results)
             
-            # Adiciona delay entre batches para respeitar rate limits
-            if i + batch_size < len(transactions_metadata):
-                await asyncio.sleep(0.5)  # 500ms entre batches
+            # Mapeia resultados pelo índice original
+            for meta, result in zip(batch, batch_results):
+                idx = transactions_metadata.index(meta)
+                if isinstance(result, Exception):
+                    categorization_results[idx] = (None, 0.0)
+                else:
+                    categorization_results[idx] = result
+            
+            # Delay reduzido entre batches (Groq é mais rápido)
+            if i + batch_size < len(transactions_to_categorize):
+                await asyncio.sleep(0.2)  # 200ms entre batches
 
         # Cria previews com os resultados
         previews = []
-        for metadata, categorization in zip(transactions_metadata, all_categorizations):
-            if isinstance(categorization, Exception):
-                # Se houve erro na categorização, usa None
-                suggested_category_id, confidence = None, 0.0
-            else:
-                suggested_category_id, confidence = categorization
+        for idx, metadata in enumerate(transactions_metadata):
+            # Busca resultado da categorização (pode não existir se foi limitado)
+            categorization = categorization_results.get(idx, (None, 0.0))
+            suggested_category_id, confidence = categorization
 
             preview = ofx_service.create_import_preview(
                 ofx_transaction=metadata["transaction"],
