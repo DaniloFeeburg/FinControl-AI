@@ -31,17 +31,32 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
         # Decodifica de base64
         ofx_bytes = base64.b64decode(file_content)
 
-        # Tenta decodificar com diferentes encodings para lidar com caracteres especiais
+        # Tenta decodificar o arquivo
         ofx_text = None
-        for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
+        try:
+            # Tenta UTF-8 strict primeiro
+            ofx_text = ofx_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            # Se falhar, verifica se parece UTF-8 corrompido ou se é realmente Latin-1/CP1252
             try:
-                ofx_text = ofx_bytes.decode(encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-
-        if ofx_text is None:
-            raise ValueError("Não foi possível decodificar o arquivo OFX. Encoding não suportado.")
+                # Decodifica como CP1252 (superset do Latin-1) para inspeção
+                # Usamos ignore para garantir que conseguimos ler algo para verificar padrões
+                text_cp1252 = ofx_bytes.decode('cp1252', errors='ignore')
+                
+                # Verifica padrões comuns de Mojibake (UTF-8 interpretado como Latin-1)
+                # Ã§ = ç, Ã£ = ã, Ã© = é, etc.
+                mojibake_patterns = ["Ã§", "Ã£", "Ã©", "Ãª", "Ã¡", "Ã³", "Ãº"]
+                
+                if any(pattern in text_cp1252 for pattern in mojibake_patterns):
+                    # Parece ser UTF-8 mas com alguns bytes inválidos. Força UTF-8 com replace.
+                    ofx_text = ofx_bytes.decode('utf-8', errors='replace')
+                else:
+                    # Assume que é realmente CP1252/Latin-1
+                    # Recarrega com replace para garantir que não falhe
+                    ofx_text = ofx_bytes.decode('cp1252', errors='replace')
+            except Exception:
+                # Fallback final
+                ofx_text = ofx_bytes.decode('latin-1', errors='replace')
 
         # Re-encode para UTF-8 e cria o BytesIO
         ofx_file = io.BytesIO(ofx_text.encode('utf-8'))
