@@ -61,8 +61,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col p-4">
-          <div className="flex items-center justify-center px-2 py-1 mb-6 mt-3 w-full">
-            <div className="w-[9rem] mx-auto">
+          <div className="flex items-center justify-center px-3 py-[0.375rem] mb-9 mt-[1.125rem] w-full">
+            <div className="w-[13.5rem] mx-auto">
               <img
                 src="/fincontrol_logo_transparente.png"
                 alt="FinControl"
@@ -160,8 +160,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}
-        <header className="lg:hidden h-[5.5rem] border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
-          <div className="w-[7rem] -ml-0.5 py-1 flex items-center justify-center">
+        <header className="lg:hidden h-[8.25rem] border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
+          <div className="w-[10.5rem] -ml-0.5 py-[0.375rem] flex items-center justify-center">
             <img
               src="/fincontrol_logo_transparente.png"
               alt="FinControl"
