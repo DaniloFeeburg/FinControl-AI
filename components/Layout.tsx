@@ -61,7 +61,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col p-4">
-          <div className="flex items-center gap-2 px-1 mb-4 mt-1">
+          <div className="flex items-center gap-2 px-0.5 mb-2 mt-0.5">
             <img
               src="/fincontrol_logo_transparente.png"
               alt="FinControl"
@@ -158,11 +158,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}
-        <header className="lg:hidden h-[5.5rem] border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
+        <header className="lg:hidden h-[5.5rem] border-b border-zinc-800 flex items-center justify-between px-3 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
           <img
             src="/fincontrol_logo_transparente.png"
             alt="FinControl"
-            className="h-[5.5rem] w-auto"
+            className="h-[5.5rem] w-auto -ml-0.5"
           />
           <button 
             onClick={() => setIsOpen(!isOpen)}
