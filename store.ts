@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Category, Transaction, RecurringRule, Reserve, ReserveTransaction, User, CreditCard } from './types';
+import { Category, Transaction, RecurringRule, Reserve, ReserveTransaction, User, CreditCard, BudgetLimit } from './types';
 
 // API URL - in production it will be relative, or we can use an env var
 // If the backend is on the same host/port (e.g. via Nginx proxy), use relative path.
@@ -20,6 +20,7 @@ interface AppState {
   recurringRules: RecurringRule[];
   reserves: Reserve[];
   creditCards: CreditCard[];
+  budgetLimits: BudgetLimit[];
   
   loading: boolean;
   error: string | null;
@@ -52,6 +53,11 @@ interface AppState {
   addCreditCard: (c: Omit<CreditCard, 'id'>) => Promise<void>;
   updateCreditCard: (id: string, c: Partial<Omit<CreditCard, 'id'>>) => Promise<void>;
   deleteCreditCard: (id: string) => Promise<void>;
+
+  // Budget Limits
+  addBudgetLimit: (b: Omit<BudgetLimit, 'id'>) => Promise<BudgetLimit | undefined>;
+  updateBudgetLimit: (id: string, b: Omit<BudgetLimit, 'id'>) => Promise<void>;
+  deleteBudgetLimit: (id: string) => Promise<void>;
   
   // Helpers
   getBalance: () => number;
@@ -88,6 +94,7 @@ export const useStore = create<AppState>((set, get) => ({
   recurringRules: [],
   reserves: [],
   creditCards: [],
+  budgetLimits: [],
   loading: false,
   error: null,
 
@@ -140,7 +147,7 @@ export const useStore = create<AppState>((set, get) => ({
   logout: () => {
     localStorage.removeItem('token');
     localStorage.clear(); // Clear all data as requested
-    set({ user: null, token: null, isAuthenticated: false, categories: [], transactions: [], recurringRules: [], reserves: [], creditCards: [] });
+    set({ user: null, token: null, isAuthenticated: false, categories: [], transactions: [], recurringRules: [], reserves: [], creditCards: [], budgetLimits: [] });
     // Force reload to clear any memory states if needed, or just redirect
     window.location.hash = '#/login';
   },
@@ -179,12 +186,13 @@ export const useStore = create<AppState>((set, get) => ({
       const headers = getAuthHeaders(token);
       const authFetch = (url: string) => authorizedFetch(url, { headers }, get().logout).then(r => r.json());
 
-      const [cats, trans, rules, res, cards] = await Promise.all([
+      const [cats, trans, rules, res, cards, budgets] = await Promise.all([
         authFetch(`${API_URL}/categories`),
         authFetch(`${API_URL}/transactions`),
         authFetch(`${API_URL}/recurring_rules`),
         authFetch(`${API_URL}/reserves`),
-        authFetch(`${API_URL}/credit_cards`)
+        authFetch(`${API_URL}/credit_cards`),
+        authFetch(`${API_URL}/budgets`)
       ]);
       set({
         categories: cats,
@@ -192,6 +200,7 @@ export const useStore = create<AppState>((set, get) => ({
         recurringRules: rules,
         reserves: res,
         creditCards: cards,
+        budgetLimits: budgets,
         loading: false
       });
     } catch (err) {
@@ -507,6 +516,60 @@ export const useStore = create<AppState>((set, get) => ({
           if (!response.ok) throw new Error('Failed to delete credit card');
           set((state) => ({
               creditCards: state.creditCards.filter(c => c.id !== id)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
+
+  addBudgetLimit: async (b) => {
+      try {
+          const token = get().token;
+          const response = await authorizedFetch(`${API_URL}/budgets`, {
+              method: 'POST',
+              headers: getAuthHeaders(token),
+              body: JSON.stringify(b)
+          }, get().logout);
+          if (!response.ok) throw new Error('Failed to add budget limit');
+          const newBudget = await response.json();
+          set((state) => ({
+              budgetLimits: [...state.budgetLimits.filter(item => item.id !== newBudget.id), newBudget]
+          }));
+          return newBudget;
+      } catch (err) {
+          console.error(err);
+          return undefined;
+      }
+  },
+
+  updateBudgetLimit: async (id, b) => {
+      try {
+          const token = get().token;
+          const response = await authorizedFetch(`${API_URL}/budgets/${id}`, {
+              method: 'PUT',
+              headers: getAuthHeaders(token),
+              body: JSON.stringify(b)
+          }, get().logout);
+          if (!response.ok) throw new Error('Failed to update budget limit');
+          const savedBudget = await response.json();
+          set((state) => ({
+              budgetLimits: state.budgetLimits.map(item => item.id === id ? savedBudget : item)
+          }));
+      } catch (err) {
+          console.error(err);
+      }
+  },
+
+  deleteBudgetLimit: async (id) => {
+      try {
+          const token = get().token;
+          const response = await authorizedFetch(`${API_URL}/budgets/${id}`, {
+              method: 'DELETE',
+              headers: getAuthHeaders(token)
+          }, get().logout);
+          if (!response.ok) throw new Error('Failed to delete budget limit');
+          set((state) => ({
+              budgetLimits: state.budgetLimits.filter(item => item.id !== id)
           }));
       } catch (err) {
           console.error(err);

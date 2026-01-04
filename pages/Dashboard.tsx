@@ -6,7 +6,7 @@ import { TrendingUp, Wallet, Lock, Activity, Sparkles, PieChart as PieChartIcon,
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
 
 export const Dashboard: React.FC = () => {
-  const { recurringRules, transactions, categories, reserves } = useStore();
+  const { recurringRules, transactions, categories, reserves, budgetLimits } = useStore();
 
   // Date State for Filter
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -117,6 +117,27 @@ export const Dashboard: React.FC = () => {
       };
     }).sort((a, b) => b.value - a.value); // Sort desc
   }, [currentMonthTransactions, categories]);
+
+  const budgetProgress = useMemo(() => {
+    return budgetLimits
+      .map(limit => {
+        const category = categories.find(c => c.id === limit.category_id);
+        if (!category) return null;
+        const spent = currentMonthTransactions
+          .filter(t => t.amount < 0 && t.category_id === limit.category_id)
+          .reduce((acc, t) => acc + Math.abs(t.amount), 0);
+        const pct = limit.monthly_limit > 0 ? Math.min(100, Math.round((spent / limit.monthly_limit) * 100)) : 0;
+        return {
+          id: limit.id,
+          name: category.name,
+          color: category.color || '#71717a',
+          spent,
+          limit: limit.monthly_limit,
+          pct
+        };
+      })
+      .filter(Boolean) as { id: string; name: string; color: string; spent: number; limit: number; pct: number }[];
+  }, [budgetLimits, categories, currentMonthTransactions]);
 
   // 2. Income vs Expenses by Month (Bar Chart) - Ending at Selected Month
   const monthlyComparison = useMemo(() => {
@@ -390,6 +411,36 @@ export const Dashboard: React.FC = () => {
               </div>
           </Card>
       </div>
+
+      {/* Budget Progress */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Orcamento por Categoria</h3>
+          <span className="text-xs text-zinc-500">Gasto atual / Limite</span>
+        </div>
+        {budgetProgress.length > 0 ? (
+          <div className="space-y-4">
+            {budgetProgress.map(item => (
+              <div key={item.id}>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-zinc-300">{item.name}</span>
+                  <span className="text-zinc-400 font-mono text-xs">
+                    {formatCurrency(item.spent)} / {formatCurrency(item.limit)}
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${item.pct >= 100 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                    style={{ width: `${item.pct}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500">Defina limites mensais por categoria para acompanhar o orcamento.</p>
+        )}
+      </Card>
 
       {/* Projection Area Chart */}
       <Card className="p-6">

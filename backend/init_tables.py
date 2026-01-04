@@ -73,7 +73,7 @@ def init_db():
 
         # 2. Executar migrações de schema para tabelas antigas
         # Tabelas que precisam de user_id
-        tables_to_migrate = ['categories', 'transactions', 'recurring_rules', 'reserves', 'credit_cards']
+        tables_to_migrate = ['categories', 'transactions', 'recurring_rules', 'reserves', 'credit_cards', 'budget_limits']
 
         with engine.connect() as conn:
             for table in tables_to_migrate:

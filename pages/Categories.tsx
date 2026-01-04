@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { Card, Badge, Button, Input } from '../components/ui';
 import { formatCurrency } from '../utils/projection';
@@ -6,9 +6,21 @@ import { Repeat, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { Category } from '../types';
 
 export const Categories: React.FC = () => {
-  const { categories, recurringRules, addCategory, updateCategory, deleteCategory, addRecurringRule } = useStore();
+  const { 
+    categories, 
+    recurringRules, 
+    budgetLimits,
+    addCategory, 
+    updateCategory, 
+    deleteCategory, 
+    addRecurringRule,
+    addBudgetLimit,
+    updateBudgetLimit,
+    deleteBudgetLimit
+  } = useStore();
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [budgetInputs, setBudgetInputs] = useState<Record<string, string>>({});
   
   // Category Form State
   const [name, setName] = useState('');
@@ -32,6 +44,15 @@ export const Categories: React.FC = () => {
     setEditId(null);
     setIsEditing(false);
   };
+
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    categories.forEach(cat => {
+      const budget = budgetLimits.find(item => item.category_id === cat.id);
+      next[cat.id] = budget ? String(budget.monthly_limit) : '';
+    });
+    setBudgetInputs(next);
+  }, [categories, budgetLimits]);
 
   const handleEdit = (c: Category) => {
     setEditId(c.id);
@@ -80,6 +101,29 @@ export const Categories: React.FC = () => {
         }
     }
     resetForm();
+  };
+
+  const getBudgetByCategory = (categoryId: string) => {
+    return budgetLimits.find(item => item.category_id === categoryId);
+  };
+
+  const handleBudgetSave = async (categoryId: string) => {
+    const raw = budgetInputs[categoryId];
+    const parsed = raw ? Number(raw) : NaN;
+    const existing = getBudgetByCategory(categoryId);
+
+    if (!raw || Number.isNaN(parsed) || parsed <= 0) {
+      if (existing) {
+        await deleteBudgetLimit(existing.id);
+      }
+      return;
+    }
+
+    if (existing) {
+      await updateBudgetLimit(existing.id, { category_id: categoryId, monthly_limit: parsed });
+    } else {
+      await addBudgetLimit({ category_id: categoryId, monthly_limit: parsed });
+    }
   };
 
   return (
@@ -139,26 +183,54 @@ export const Categories: React.FC = () => {
 
           <div className="grid gap-3">
             {categories.map(c => (
-              <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-900/30 group">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-white shadow-sm"
-                    style={{ backgroundColor: c.color }}
-                  >
-                    {c.name.charAt(0)}
+              <div key={c.id} className="p-3 rounded-lg border border-zinc-800 bg-zinc-900/30 group space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-white shadow-sm"
+                      style={{ backgroundColor: c.color }}
+                    >
+                      {c.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{c.name}</p>
+                      <p className="text-xs text-zinc-500">{c.is_fixed ? 'Custo Fixo' : 'Variavel'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-sm">{c.name}</p>
-                    <p className="text-xs text-zinc-500">{c.is_fixed ? 'Custo Fixo' : 'Variável'}</p>
+                  <div className="flex items-center gap-2">
+                      <Badge variant={c.type === 'INCOME' ? 'success' : 'neutral'}>
+                      {c.type === 'INCOME' ? 'Receita' : 'Despesa'}
+                      </Badge>
+                      <button onClick={() => handleEdit(c)} className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-800 rounded transition-all text-zinc-400"><Pencil size={12}/></button>
+                      <button onClick={() => handleDelete(c.id)} className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-800 rounded transition-all text-red-400"><Trash2 size={12}/></button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Badge variant={c.type === 'INCOME' ? 'success' : 'neutral'}>
-                    {c.type === 'INCOME' ? 'Receita' : 'Despesa'}
-                    </Badge>
-                    <button onClick={() => handleEdit(c)} className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-800 rounded transition-all text-zinc-400"><Pencil size={12}/></button>
-                    <button onClick={() => handleDelete(c.id)} className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-800 rounded transition-all text-red-400"><Trash2 size={12}/></button>
-                </div>
+
+                {c.type === 'EXPENSE' && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                    <span className="text-zinc-500">Limite mensal</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={budgetInputs[c.id] ?? ''}
+                      onChange={(e) => setBudgetInputs(prev => ({ ...prev, [c.id]: e.target.value }))}
+                      placeholder="0,00"
+                      className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm text-white w-32"
+                    />
+                    <button
+                      onClick={() => handleBudgetSave(c.id)}
+                      className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+                    >
+                      Salvar limite
+                    </button>
+                    {getBudgetByCategory(c.id) && (
+                      <span className="text-zinc-500">
+                        Atual: {formatCurrency(getBudgetByCategory(c.id)!.monthly_limit)}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

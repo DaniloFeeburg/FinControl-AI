@@ -83,6 +83,29 @@ def delete_category(category_id: str, db: Session = Depends(get_db), current_use
     crud.delete_category(db, category_id, user_id=current_user.id)
     return {"ok": True}
 
+# Budget Limits Endpoints
+@app.get("/budgets", response_model=List[schemas.BudgetLimit])
+def read_budget_limits(db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    return crud.get_budget_limits(db, user_id=current_user.id)
+
+@app.post("/budgets", response_model=schemas.BudgetLimit)
+def create_budget_limit(budget: schemas.BudgetLimitCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    return crud.create_budget_limit(db, budget, user_id=current_user.id)
+
+@app.put("/budgets/{budget_id}", response_model=schemas.BudgetLimit)
+def update_budget_limit(budget_id: str, budget: schemas.BudgetLimitCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    db_budget = crud.update_budget_limit(db, budget_id, budget, user_id=current_user.id)
+    if not db_budget:
+        raise HTTPException(status_code=404, detail="Budget limit not found")
+    return db_budget
+
+@app.delete("/budgets/{budget_id}")
+def delete_budget_limit(budget_id: str, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    db_budget = crud.delete_budget_limit(db, budget_id, user_id=current_user.id)
+    if not db_budget:
+        raise HTTPException(status_code=404, detail="Budget limit not found")
+    return {"ok": True}
+
 @app.get("/transactions", response_model=List[schemas.Transaction])
 def read_transactions(
     skip: int = 0,
