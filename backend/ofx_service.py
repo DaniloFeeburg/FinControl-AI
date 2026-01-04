@@ -17,6 +17,34 @@ from .schemas import (
 from . import crud
 
 
+
+def fix_mojibake(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return text
+
+    if not isinstance(text, str):
+        text = str(text)
+
+    def mojibake_score(value: str) -> int:
+        return sum(value.count(token) for token in ["Ã", "Â", "�"])
+
+    original_score = mojibake_score(text)
+    if original_score == 0:
+        return text
+
+    try:
+        fixed = text.encode("latin-1").decode("utf-8")
+    except UnicodeEncodeError:
+        try:
+            fixed = text.encode("cp1252").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return text
+    except UnicodeDecodeError:
+        return text
+
+    return fixed if mojibake_score(fixed) < original_score else text
+
+
 def parse_ofx_file(file_content: str) -> OFXParseResponse:
     """
     Parse arquivo OFX e retorna dados estruturados
@@ -91,6 +119,8 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
 
             # Descrição (payee pode ser None em alguns bancos)
             payee = txn.payee if txn.payee else (txn.memo if txn.memo else "Transação sem descrição")
+            payee = fix_mojibake(payee)
+            memo = fix_mojibake(txn.memo) if txn.memo else None
 
             # Converte o valor para float de forma robusta
             amount_value = txn.amount
@@ -133,7 +163,7 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
                 payee=str(payee).strip(),
                 amount=final_amount_cents,
                 date=txn_date,
-                memo=str(txn.memo).strip() if txn.memo else None,
+                memo=str(memo).strip() if memo else None,
                 fitid=str(txn.id) if hasattr(txn, 'id') else None,
                 check_num=str(txn.checknum) if hasattr(txn, 'checknum') and txn.checknum else None
             ))
@@ -169,11 +199,11 @@ def clean_description(description: str, memo: Optional[str] = None) -> str:
         Descrição limpa e formatada
     """
     # Remove espaços extras
-    cleaned = " ".join(description.split())
+    cleaned = " ".join(fix_mojibake(description).split())
 
     # Se tiver memo e for diferente da descrição, adiciona
     if memo and memo.strip() and memo.strip() != cleaned:
-        memo_clean = " ".join(memo.split())
+        memo_clean = " ".join(fix_mojibake(memo).split())
         if memo_clean not in cleaned:
             cleaned = f"{cleaned} - {memo_clean}"
 
