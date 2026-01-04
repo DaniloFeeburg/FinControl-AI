@@ -65,7 +65,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <img
               src="/fincontrol_logo_transparente.png"
               alt="FinControl"
-              className="h-12 w-auto"
+              className="h-16 w-auto"
             />
           </div>
 
@@ -162,7 +162,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <img
             src="/fincontrol_logo_transparente.png"
             alt="FinControl"
-            className="h-8 w-auto"
+            className="h-10 w-auto"
           />
           <button 
             onClick={() => setIsOpen(!isOpen)}
