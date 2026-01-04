@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Receipt, Tags, PiggyBank, PieChart, Menu, X, Bot, LogOut, User as UserIcon, CalendarClock, CreditCard, Upload } from 'lucide-react';
+import { LayoutDashboard, Receipt, Tags, PiggyBank, Menu, X, Bot, LogOut, User as UserIcon, CalendarClock, CreditCard, Upload } from 'lucide-react';
 import { useStore } from '../store';
 
 interface NavItemProps {
@@ -62,10 +62,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       `}>
         <div className="h-full flex flex-col p-4">
           <div className="flex items-center gap-2 px-2 mb-8 mt-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
-              <PieChart className="text-white" size={20} />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-white">FinControl AI</span>
+            <img
+              src="/fincontrol_logo_transparente.png"
+              alt="FinControl"
+              className="h-8 w-auto"
+            />
           </div>
 
           <nav className="flex-1 space-y-1">
@@ -158,7 +159,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}
         <header className="lg:hidden h-16 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
-          <span className="font-bold text-lg">FinControl</span>
+          <img
+            src="/fincontrol_logo_transparente.png"
+            alt="FinControl"
+            className="h-6 w-auto"
+          />
           <button 
             onClick={() => setIsOpen(!isOpen)}
             className="p-2 text-zinc-400 hover:text-white"
