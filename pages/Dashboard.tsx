@@ -123,16 +123,17 @@ export const Dashboard: React.FC = () => {
       .map(limit => {
         const category = categories.find(c => c.id === limit.category_id);
         if (!category) return null;
+        const limitCents = Math.round(limit.monthly_limit * 100);
         const spent = currentMonthTransactions
           .filter(t => t.amount < 0 && t.category_id === limit.category_id)
           .reduce((acc, t) => acc + Math.abs(t.amount), 0);
-        const pct = limit.monthly_limit > 0 ? Math.min(100, Math.round((spent / limit.monthly_limit) * 100)) : 0;
+        const pct = limitCents > 0 ? Math.min(100, Math.round((spent / limitCents) * 100)) : 0;
         return {
           id: limit.id,
           name: category.name,
           color: category.color || '#71717a',
           spent,
-          limit: limit.monthly_limit,
+          limit: limitCents,
           pct
         };
       })

@@ -33,6 +33,22 @@ export const Categories: React.FC = () => {
   const [recurrenceDay, setRecurrenceDay] = useState('5');
   const [autoCreate, setAutoCreate] = useState(true);
 
+  const formatLimitValue = (value: number) => {
+    return formatCurrency(Math.round(value * 100));
+  };
+
+  const parseLimitInput = (raw: string) => {
+    const cleaned = raw.replace(/[^\d.,]/g, '');
+    if (!cleaned) return null;
+    let normalized = cleaned;
+    if (cleaned.includes(',')) {
+      normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    }
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed;
+  };
+
   const resetForm = () => {
     setName('');
     setType('EXPENSE');
@@ -49,7 +65,7 @@ export const Categories: React.FC = () => {
     const next: Record<string, string> = {};
     categories.forEach(cat => {
       const budget = budgetLimits.find(item => item.category_id === cat.id);
-      next[cat.id] = budget ? String(budget.monthly_limit) : '';
+      next[cat.id] = budget ? formatLimitValue(budget.monthly_limit) : '';
     });
     setBudgetInputs(next);
   }, [categories, budgetLimits]);
@@ -109,10 +125,10 @@ export const Categories: React.FC = () => {
 
   const handleBudgetSave = async (categoryId: string) => {
     const raw = budgetInputs[categoryId];
-    const parsed = raw ? Number(raw) : NaN;
+    const parsed = raw ? parseLimitInput(raw) : null;
     const existing = getBudgetByCategory(categoryId);
 
-    if (!raw || Number.isNaN(parsed) || parsed <= 0) {
+    if (!raw || parsed === null || parsed <= 0) {
       if (existing) {
         await deleteBudgetLimit(existing.id);
       }
@@ -210,11 +226,19 @@ export const Categories: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                     <span className="text-zinc-500">Limite mensal</span>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       min="0"
                       step="0.01"
                       value={budgetInputs[c.id] ?? ''}
-                      onChange={(e) => setBudgetInputs(prev => ({ ...prev, [c.id]: e.target.value }))}
+                      onChange={(e) => {
+                        const parsed = parseLimitInput(e.target.value);
+                        if (parsed === null) {
+                          setBudgetInputs(prev => ({ ...prev, [c.id]: '' }));
+                          return;
+                        }
+                        setBudgetInputs(prev => ({ ...prev, [c.id]: formatLimitValue(parsed) }));
+                      }}
                       placeholder="0,00"
                       className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-sm text-white w-32"
                     />
@@ -226,7 +250,7 @@ export const Categories: React.FC = () => {
                     </button>
                     {getBudgetByCategory(c.id) && (
                       <span className="text-zinc-500">
-                        Atual: {formatCurrency(getBudgetByCategory(c.id)!.monthly_limit)}
+                        Atual: {formatLimitValue(getBudgetByCategory(c.id)!.monthly_limit)}
                       </span>
                     )}
                   </div>
