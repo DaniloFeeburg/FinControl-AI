@@ -906,6 +906,68 @@ async def confirm_ofx_import(
     Confirma e executa a importação das transações OFX
     """
     try:
+        import datetime
+        import re
+        import calendar
+        from dateutil.relativedelta import relativedelta
+
+        def parse_installment_info(description: str, regex: str, separator_pattern: str) -> Optional[tuple]:
+            if not description:
+                return None
+
+            matches = list(re.finditer(regex, description, re.IGNORECASE))
+            if not matches:
+                return None
+
+            match = matches[-1]
+            current = int(match.group(1))
+            total = int(match.group(2))
+
+            if total <= 1 or current < 1 or current > total or total > 60:
+                return None
+
+            trimmed = description.strip()
+            base_description = trimmed
+            if match.end() == len(trimmed):
+                pattern = rf'[\s\-]*\b{re.escape(match.group(1))}{separator_pattern}{re.escape(match.group(2))}\b\s*$'
+                base_description = re.sub(pattern, '', trimmed, flags=re.IGNORECASE).strip() or trimmed
+
+            return current, total, base_description
+
+        def get_date_safe(year: int, month: int, day: int) -> datetime.date:
+            try:
+                return datetime.date(year, month, day)
+            except ValueError:
+                last_day = calendar.monthrange(year, month)[1]
+                return datetime.date(year, month, last_day)
+
+        card_cache = {}
+        category_cache = {}
+
+        def get_card(card_id: Optional[str]):
+            if not card_id:
+                return None
+            if card_id in card_cache:
+                return card_cache[card_id]
+            card = db.query(models.CreditCard).filter(
+                models.CreditCard.id == card_id,
+                models.CreditCard.user_id == current_user.id
+            ).first()
+            card_cache[card_id] = card
+            return card
+
+        def get_category(category_id: Optional[str]):
+            if not category_id:
+                return None
+            if category_id in category_cache:
+                return category_cache[category_id]
+            category = db.query(models.Category).filter(
+                models.Category.id == category_id,
+                models.Category.user_id == current_user.id
+            ).first()
+            category_cache[category_id] = category
+            return category
+
         imported_count = 0
         skipped_count = 0
         failed_count = 0
@@ -918,13 +980,80 @@ async def confirm_ofx_import(
                     skipped_count += 1
                     continue
 
+                category_id = txn_data.get('category_id')
+                credit_card_id = request.credit_card_id if request.credit_card_id else txn_data.get('credit_card_id')
+                description = txn_data['description']
+                recurring_rule_id = None
+
+                category = get_category(category_id)
+                is_installment_category = bool(category and re.search(r'parcel', category.name, re.IGNORECASE))
+
+                installment_info = parse_installment_info(
+                    description,
+                    r'(\d{1,3})\s*/\s*(\d{1,3})',
+                    r'\s*/\s*'
+                )
+                if not installment_info and is_installment_category:
+                    installment_info = parse_installment_info(
+                        description,
+                        r'(\d{1,3})\s*de\s*(\d{1,3})',
+                        r'\s*de\s*'
+                    )
+                if installment_info:
+                    current_installment, total_installments, base_description = installment_info
+                    if total_installments > current_installment:
+                        card = get_card(credit_card_id)
+                        due_day = card.due_day if card else None
+                        if not due_day:
+                            try:
+                                due_day = int(txn_data['date'].split('-')[2])
+                            except Exception:
+                                due_day = 1
+
+                        txn_date = datetime.datetime.strptime(txn_data['date'], "%Y-%m-%d").date()
+                        months_remaining = total_installments - current_installment
+                        end_month = txn_date + relativedelta(months=months_remaining)
+                        end_date = get_date_safe(end_month.year, end_month.month, due_day)
+
+                        rrule = f"FREQ=MONTHLY;BYMONTHDAY={due_day}"
+
+                        existing_rule = db.query(models.RecurringRule).filter(
+                            models.RecurringRule.user_id == current_user.id,
+                            models.RecurringRule.description == base_description,
+                            models.RecurringRule.amount == float(txn_data['amount']),
+                            models.RecurringRule.category_id == category_id,
+                            models.RecurringRule.credit_card_id == credit_card_id,
+                            models.RecurringRule.end_date == end_date.isoformat()
+                        ).first()
+
+                        if existing_rule:
+                            recurring_rule_id = existing_rule.id
+                        else:
+                            rule_create = schemas.RecurringRuleCreate(
+                                category_id=category_id,
+                                credit_card_id=credit_card_id,
+                                amount=float(txn_data['amount']),
+                                description=base_description,
+                                rrule=rrule,
+                                active=True,
+                                auto_create=False,
+                                end_date=end_date.isoformat()
+                            )
+                            created_rule = crud.create_recurring_rule(
+                                db=db,
+                                rule=rule_create,
+                                user_id=current_user.id
+                            )
+                            recurring_rule_id = created_rule.id
+
                 # Cria a transação
                 transaction_create = schemas.TransactionCreate(
-                    category_id=txn_data.get('category_id'),
-                    credit_card_id=request.credit_card_id if request.credit_card_id else txn_data.get('credit_card_id'),
+                    category_id=category_id,
+                    credit_card_id=credit_card_id,
+                    recurring_rule_id=recurring_rule_id,
                     amount=float(txn_data['amount']),
                     date=txn_data['date'],
-                    description=txn_data['description'],
+                    description=description,
                     status=txn_data.get('status', 'PAID')
                 )
 
