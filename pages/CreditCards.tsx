@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function CreditCards() {
-  const { creditCards, addCreditCard, updateCreditCard, deleteCreditCard, user, categories } = useStore();
+  const { creditCards, addCreditCard, updateCreditCard, deleteCreditCard, user, categories, transactions } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [showProjection, setShowProjection] = useState(false);
@@ -192,8 +192,6 @@ export default function CreditCards() {
   };
 
   const availableLimit = (card: CreditCard) => {
-      const { transactions } = useStore.getState();
-
       const usedLimitCents = transactions
         .filter(t => t.credit_card_id === card.id && t.status === 'PENDING')
         .reduce((sum, t) => sum + Math.abs(t.amount), 0);
@@ -206,6 +204,27 @@ export default function CreditCards() {
 
       const limitCents = card.credit_limit * 100;
       return limitCents - usedLimitCents;
+  };
+
+  const projectionChartData = projectionData.map(entry => ({
+      ...entry,
+      total_abs: Math.abs(entry.total)
+  }));
+
+  const ProjectionTooltip = ({ active, payload }: any) => {
+      if (!active || !payload || !payload.length) return null;
+      const data = payload[0]?.payload;
+      const total = data?.total ?? 0;
+      const color = total < 0 ? '#ef4444' : '#f4f4f5';
+
+      return (
+          <div className="bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-xs">
+              <div className="text-zinc-400">{data?.month}</div>
+              <div style={{ color }} className="font-semibold">
+                  R$ {(Math.abs(total) / 100).toFixed(2)}
+              </div>
+          </div>
+      );
   };
 
   return (
@@ -310,15 +329,14 @@ export default function CreditCards() {
                                 <h3 className="text-lg font-bold text-white mb-4">Projeção de Faturas (Próximos 12 Meses)</h3>
                                 <div className="h-64 w-full">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={projectionData}>
+                                        <BarChart data={projectionChartData}>
                                             <XAxis dataKey="month" stroke="#71717a" fontSize={12} />
                                             <YAxis stroke="#71717a" fontSize={12} tickFormatter={(val) => `R$ ${val/100}`} />
                                             <Tooltip
-                                                contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46' }}
-                                                formatter={(val: number) => [`R$ ${(val/100).toFixed(2)}`, 'Total']}
+                                                content={<ProjectionTooltip />}
                                             />
-                                            <Bar dataKey="total" radius={[4, 4, 0, 0]}>
-                                                {projectionData.map((entry, index) => (
+                                            <Bar dataKey="total_abs" radius={[4, 4, 0, 0]}>
+                                                {projectionChartData.map((entry, index) => (
                                                     <Cell key={`cell-${index}`} fill={entry.total < 0 ? '#ef4444' : '#10b981'} />
                                                 ))}
                                             </Bar>

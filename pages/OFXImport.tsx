@@ -147,6 +147,8 @@ export default function OFXImport() {
       setSuccess(`${result.imported_count} transações importadas com sucesso! ${result.skipped_count} duplicatas ignoradas.`);
 
       // Aguarda 2 segundos e redireciona para a página de transações
+      await useStore.getState().fetchAllData();
+
       setTimeout(() => {
         window.location.hash = '#/transactions';
       }, 2000);
