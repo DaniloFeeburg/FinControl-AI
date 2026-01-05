@@ -1047,6 +1047,10 @@ async def confirm_ofx_import(
                             recurring_rule_id = created_rule.id
 
                 # Cria a transação
+                status = txn_data.get('status', 'PAID')
+                if credit_card_id:
+                    status = 'PENDING'
+
                 transaction_create = schemas.TransactionCreate(
                     category_id=category_id,
                     credit_card_id=credit_card_id,
@@ -1054,7 +1058,7 @@ async def confirm_ofx_import(
                     amount=float(txn_data['amount']),
                     date=txn_data['date'],
                     description=description,
-                    status=txn_data.get('status', 'PAID')
+                    status=status
                 )
 
                 # Cria no banco de dados
