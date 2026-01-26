@@ -68,6 +68,12 @@ export interface CreditCard {
   active: boolean;
 }
 
+export interface BudgetLimit {
+  id: string;
+  category_id: string;
+  monthly_limit: number;
+}
+
 export interface DailyProjection {
   date: string;
   balance: number;

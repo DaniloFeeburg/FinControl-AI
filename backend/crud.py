@@ -132,6 +132,24 @@ def delete_transaction(db: Session, transaction_id: str, user_id: str):
         db.commit()
     return db_transaction
 
+def get_recent_transactions_with_category(db: Session, user_id: str, limit: int = 50):
+    """
+    Retorna as transações mais recentes que possuem categoria atribuída.
+    Usado para dar contexto à IA (few-shot learning).
+    """
+    return db.query(
+        models.Transaction.description, 
+        models.Category.name.label("category_name")
+    ).join(
+        models.Category, 
+        models.Transaction.category_id == models.Category.id
+    ).filter(
+        models.Transaction.user_id == user_id,
+        models.Transaction.category_id.isnot(None)
+    ).order_by(
+        models.Transaction.date.desc()
+    ).limit(limit).all()
+
 # Recurring Rules
 def get_recurring_rules(db: Session, user_id: str):
     return db.query(models.RecurringRule).filter(models.RecurringRule.user_id == user_id).all()
@@ -219,3 +237,47 @@ def create_reserve_history(db: Session, reserve_id: str, amount: float, type: st
     db.commit()
     db.refresh(db_reserve)
     return db_reserve
+
+# Budget Limits
+def get_budget_limits(db: Session, user_id: str):
+    return db.query(models.BudgetLimit).filter(models.BudgetLimit.user_id == user_id).all()
+
+def create_budget_limit(db: Session, budget: schemas.BudgetLimitCreate, user_id: str):
+    existing = db.query(models.BudgetLimit).filter(
+        models.BudgetLimit.user_id == user_id,
+        models.BudgetLimit.category_id == budget.category_id
+    ).first()
+
+    if existing:
+        existing.monthly_limit = budget.monthly_limit
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    db_budget = models.BudgetLimit(id=str(uuid.uuid4()), user_id=user_id, **budget.dict())
+    db.add(db_budget)
+    db.commit()
+    db.refresh(db_budget)
+    return db_budget
+
+def update_budget_limit(db: Session, budget_id: str, budget: schemas.BudgetLimitCreate, user_id: str):
+    db_budget = db.query(models.BudgetLimit).filter(
+        models.BudgetLimit.id == budget_id,
+        models.BudgetLimit.user_id == user_id
+    ).first()
+    if db_budget:
+        for key, value in budget.dict().items():
+            setattr(db_budget, key, value)
+        db.commit()
+        db.refresh(db_budget)
+    return db_budget
+
+def delete_budget_limit(db: Session, budget_id: str, user_id: str):
+    db_budget = db.query(models.BudgetLimit).filter(
+        models.BudgetLimit.id == budget_id,
+        models.BudgetLimit.user_id == user_id
+    ).first()
+    if db_budget:
+        db.delete(db_budget)
+        db.commit()
+    return db_budget

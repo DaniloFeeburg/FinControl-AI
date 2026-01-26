@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Date, Index
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Date, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .database import Base
 import datetime
@@ -17,6 +17,7 @@ class User(Base):
     recurring_rules = relationship("RecurringRule", back_populates="user")
     reserves = relationship("Reserve", back_populates="user")
     credit_cards = relationship("CreditCard", back_populates="user")
+    budget_limits = relationship("BudgetLimit", back_populates="user")
 
 class CreditCard(Base):
     __tablename__ = "credit_cards"
@@ -53,6 +54,7 @@ class Category(Base):
     user = relationship("User", back_populates="categories")
     transactions = relationship("Transaction", back_populates="category")
     recurring_rules = relationship("RecurringRule", back_populates="category")
+    budget_limits = relationship("BudgetLimit", back_populates="category")
 
     __table_args__ = (
         Index('idx_category_user_type', 'user_id', 'type'),
@@ -133,3 +135,19 @@ class ReserveHistory(Base):
     type = Column(String) # DEPOSIT, WITHDRAW
 
     reserve = relationship("Reserve", back_populates="history")
+
+class BudgetLimit(Base):
+    __tablename__ = "budget_limits"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"))
+    category_id = Column(String, ForeignKey("categories.id"))
+    monthly_limit = Column(Float)
+
+    user = relationship("User", back_populates="budget_limits")
+    category = relationship("Category", back_populates="budget_limits")
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'category_id', name='uq_budget_user_category'),
+        Index('idx_budget_user_category', 'user_id', 'category_id'),
+    )

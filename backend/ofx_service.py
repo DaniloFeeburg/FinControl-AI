@@ -17,6 +17,34 @@ from .schemas import (
 from . import crud
 
 
+
+def fix_mojibake(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return text
+
+    if not isinstance(text, str):
+        text = str(text)
+
+    def mojibake_score(value: str) -> int:
+        return sum(value.count(token) for token in ["Ã", "Â", "�"])
+
+    original_score = mojibake_score(text)
+    if original_score == 0:
+        return text
+
+    try:
+        fixed = text.encode("latin-1").decode("utf-8")
+    except UnicodeEncodeError:
+        try:
+            fixed = text.encode("cp1252").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return text
+    except UnicodeDecodeError:
+        return text
+
+    return fixed if mojibake_score(fixed) < original_score else text
+
+
 def parse_ofx_file(file_content: str) -> OFXParseResponse:
     """
     Parse arquivo OFX e retorna dados estruturados
@@ -31,17 +59,32 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
         # Decodifica de base64
         ofx_bytes = base64.b64decode(file_content)
 
-        # Tenta decodificar com diferentes encodings para lidar com caracteres especiais
+        # Tenta decodificar o arquivo
         ofx_text = None
-        for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
+        try:
+            # Tenta UTF-8 strict primeiro
+            ofx_text = ofx_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            # Se falhar, verifica se parece UTF-8 corrompido ou se é realmente Latin-1/CP1252
             try:
-                ofx_text = ofx_bytes.decode(encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-
-        if ofx_text is None:
-            raise ValueError("Não foi possível decodificar o arquivo OFX. Encoding não suportado.")
+                # Decodifica como CP1252 (superset do Latin-1) para inspeção
+                # Usamos ignore para garantir que conseguimos ler algo para verificar padrões
+                text_cp1252 = ofx_bytes.decode('cp1252', errors='ignore')
+                
+                # Verifica padrões comuns de Mojibake (UTF-8 interpretado como Latin-1)
+                # Ã§ = ç, Ã£ = ã, Ã© = é, etc.
+                mojibake_patterns = ["Ã§", "Ã£", "Ã©", "Ãª", "Ã¡", "Ã³", "Ãº"]
+                
+                if any(pattern in text_cp1252 for pattern in mojibake_patterns):
+                    # Parece ser UTF-8 mas com alguns bytes inválidos. Força UTF-8 com replace.
+                    ofx_text = ofx_bytes.decode('utf-8', errors='replace')
+                else:
+                    # Assume que é realmente CP1252/Latin-1
+                    # Recarrega com replace para garantir que não falhe
+                    ofx_text = ofx_bytes.decode('cp1252', errors='replace')
+            except Exception:
+                # Fallback final
+                ofx_text = ofx_bytes.decode('latin-1', errors='replace')
 
         # Re-encode para UTF-8 e cria o BytesIO
         ofx_file = io.BytesIO(ofx_text.encode('utf-8'))
@@ -76,18 +119,51 @@ def parse_ofx_file(file_content: str) -> OFXParseResponse:
 
             # Descrição (payee pode ser None em alguns bancos)
             payee = txn.payee if txn.payee else (txn.memo if txn.memo else "Transação sem descrição")
+            payee = fix_mojibake(payee)
+            memo = fix_mojibake(txn.memo) if txn.memo else None
 
-            # Converte o valor para float (alguns bancos brasileiros podem usar vírgula)
+            # Converte o valor para float de forma robusta
             amount_value = txn.amount
             if isinstance(amount_value, str):
-                # Remove pontos de milhares e substitui vírgula por ponto
-                amount_value = amount_value.replace('.', '').replace(',', '.')
+                # Tenta detectar formato
+                clean_val = amount_value.strip()
+                
+                # Caso 1: Formato PT-BR explícito (tem ponto e vírgula, vírgula é decimal)
+                # Ex: 1.234,56
+                if '.' in clean_val and ',' in clean_val:
+                    if clean_val.find(',') > clean_val.find('.'):
+                        amount_value = clean_val.replace('.', '').replace(',', '.')
+                    else:
+                        # Ex: 1,234.56 (US invertido/misturado?) -> Assume US
+                        amount_value = clean_val.replace(',', '')
+                
+                # Caso 2: Apenas vírgula (Ex: 1234,56 ou 12,34) -> Assume PT-BR se não for confuso
+                elif ',' in clean_val:
+                    amount_value = clean_val.replace(',', '.')
+                
+                # Caso 3: Apenas ponto (Ex: 1234.56) -> Assume US (padrão OFX)
+                # O código anterior removia o ponto, causando erro (9.98 -> 998.0)
+                # Mantemos o ponto como decimal
+                pass
+            
+            # Garante float
+            try:
+                final_amount = float(amount_value)
+            except ValueError:
+                # Fallback para o comportamento antigo se falhar
+                val_str = str(txn.amount).replace('.', '').replace(',', '.')
+                final_amount = float(val_str)
+
+            # IMPORTANTE: O sistema armazena valores em CENTAVOS no banco de dados.
+            # O frontend espera receber 1000.0 para exibir R$ 10,00.
+            # Portanto, precisamos multiplicar o valor em reais do OFX por 100.
+            final_amount_cents = final_amount * 100
 
             transactions.append(OFXTransactionParsed(
                 payee=str(payee).strip(),
-                amount=float(amount_value),
+                amount=final_amount_cents,
                 date=txn_date,
-                memo=str(txn.memo).strip() if txn.memo else None,
+                memo=str(memo).strip() if memo else None,
                 fitid=str(txn.id) if hasattr(txn, 'id') else None,
                 check_num=str(txn.checknum) if hasattr(txn, 'checknum') and txn.checknum else None
             ))
@@ -123,11 +199,11 @@ def clean_description(description: str, memo: Optional[str] = None) -> str:
         Descrição limpa e formatada
     """
     # Remove espaços extras
-    cleaned = " ".join(description.split())
+    cleaned = " ".join(fix_mojibake(description).split())
 
     # Se tiver memo e for diferente da descrição, adiciona
     if memo and memo.strip() and memo.strip() != cleaned:
-        memo_clean = " ".join(memo.split())
+        memo_clean = " ".join(fix_mojibake(memo).split())
         if memo_clean not in cleaned:
             cleaned = f"{cleaned} - {memo_clean}"
 
@@ -195,103 +271,48 @@ async def suggest_category_with_ai(
     description: str,
     amount: float,
     categories: List[dict],
-    gemini_api_key: str,
-    timeout_seconds: int = 8
+    previous_transactions: List[dict] = [],
+    gemini_api_key: str = "",  # Mantido para compatibilidade
+    timeout_seconds: int = 15,
+    max_retries: int = 3,
+    openrouter_api_key: str = ""
 ) -> Tuple[Optional[str], float]:
     """
-    Usa Google Gemini para sugerir categoria baseado na descrição
-
-    Args:
-        description: Descrição da transação
-        amount: Valor da transação (negativo = despesa, positivo = receita)
-        categories: Lista de categorias disponíveis [{id, name, type}]
-        gemini_api_key: Chave da API do Gemini
-        timeout_seconds: Timeout em segundos para a chamada da API (padrão: 8s)
-
-    Returns:
-        Tuple (category_id, confidence_score)
+    Sugere categoria baseado na descrição usando IA.
+    Usa apenas OpenRouter (Xiaomi MiMo, gratuito) como provedor principal.
     """
     import asyncio
-    from google import genai
-    from google.genai import types
-
-    if not gemini_api_key or not categories:
+    import os
+    
+    # Obtém API key do OpenRouter
+    openrouter_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
+    
+    if not categories:
         return None, 0.0
-
-    try:
-        # Função interna para fazer a chamada síncrona
-        def _call_gemini():
-            # Inicializa o cliente com a API key
-            client = genai.Client(api_key=gemini_api_key)
-
-            # Filtra categorias por tipo (receita ou despesa)
-            transaction_type = "INCOME" if amount > 0 else "EXPENSE"
-            relevant_categories = [c for c in categories if c['type'] == transaction_type]
-
-            if not relevant_categories:
-                print(f"[IA] Nenhuma categoria do tipo {transaction_type} disponível")
-                return None, 0.0, []
-
-            # Prepara o prompt - SIMPLIFICADO para melhor parsing
-            categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
-
-            prompt = f"""Categorize esta transação financeira brasileira.
-
-Transação: "{description}"
-Valor: R$ {abs(amount):.2f} ({'receita' if amount > 0 else 'despesa'})
-
-Categorias disponíveis:
-{categories_text}
-
-Responda EXATAMENTE neste formato: ID_DA_CATEGORIA|CONFIANCA
-Exemplo: abc123|0.85
-
-Se não tiver certeza, responda: none|0.0"""
-
-            # Usa o modelo gemini-2.5-flash (modelo atualizado e disponível)
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
+    
+    if openrouter_key:
+        try:
+            from .ai_openrouter import suggest_category
+            
+            category_id, confidence = await suggest_category(
+                description=description,
+                amount=amount,
+                categories=categories,
+                previous_transactions=previous_transactions,
+                openrouter_api_key=openrouter_key,
+                timeout_seconds=timeout_seconds,
+                max_retries=max_retries
             )
-
-            result = response.text.strip()
-            return result, transaction_type, relevant_categories
-
-        # Executa em thread separada com timeout
-        loop = asyncio.get_event_loop()
-        result, transaction_type, relevant_categories = await asyncio.wait_for(
-            loop.run_in_executor(None, _call_gemini),
-            timeout=timeout_seconds
-        )
-
-        print(f"[IA] Descrição: {description[:50]}, Resposta: {result}")
-
-        # Parse da resposta com tratamento robusto
-        if '|' in result:
-            parts = result.split('|')
-            if len(parts) >= 2:
-                category_id = parts[0].strip()
-                try:
-                    confidence = float(parts[1].strip())
-                except:
-                    confidence = 0.0
-
-                # Valida se o category_id existe
-                if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
-                    print(f"[IA] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
-                    return category_id, confidence
-
-        print(f"[IA] ✗ Resposta inválida ou categoria não encontrada")
-        return None, 0.0
-
-    except asyncio.TimeoutError:
-        print(f"[IA] ⏱ Timeout ao categorizar: {description[:50]} (>{timeout_seconds}s)")
-        return None, 0.0
-    except Exception as e:
-        print(f"[IA] ERRO ao sugerir categoria: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None, 0.0
+            
+            return category_id, confidence
+                
+        except Exception as e:
+            print(f"[IA-OpenRouter] Erro ao sugerir categoria: {str(e)}")
+            return None, 0.0
+    
+    # Nenhum provedor configurado
+    print("[IA] OPENROUTER_API_KEY não configurada")
+    return None, 0.0
 
 
 def create_import_preview(

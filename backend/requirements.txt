@@ -10,5 +10,8 @@ bcrypt==4.0.1
 passlib==1.7.4
 python-multipart
 python-dateutil
-google-genai>=0.2.0
 ofxparse==0.21
+
+# IA Providers
+openai>=1.0.0  # Para OpenRouter (Xiaomi MiMo, etc)
+google-genai>=0.2.0  # Para Gemini (fallback/opcional)

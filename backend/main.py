@@ -83,6 +83,29 @@ def delete_category(category_id: str, db: Session = Depends(get_db), current_use
     crud.delete_category(db, category_id, user_id=current_user.id)
     return {"ok": True}
 
+# Budget Limits Endpoints
+@app.get("/budgets", response_model=List[schemas.BudgetLimit])
+def read_budget_limits(db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    return crud.get_budget_limits(db, user_id=current_user.id)
+
+@app.post("/budgets", response_model=schemas.BudgetLimit)
+def create_budget_limit(budget: schemas.BudgetLimitCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    return crud.create_budget_limit(db, budget, user_id=current_user.id)
+
+@app.put("/budgets/{budget_id}", response_model=schemas.BudgetLimit)
+def update_budget_limit(budget_id: str, budget: schemas.BudgetLimitCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    db_budget = crud.update_budget_limit(db, budget_id, budget, user_id=current_user.id)
+    if not db_budget:
+        raise HTTPException(status_code=404, detail="Budget limit not found")
+    return db_budget
+
+@app.delete("/budgets/{budget_id}")
+def delete_budget_limit(budget_id: str, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    db_budget = crud.delete_budget_limit(db, budget_id, user_id=current_user.id)
+    if not db_budget:
+        raise HTTPException(status_code=404, detail="Budget limit not found")
+    return {"ok": True}
+
 @app.get("/transactions", response_model=List[schemas.Transaction])
 def read_transactions(
     skip: int = 0,
@@ -636,23 +659,47 @@ async def get_ai_analysis(
 ):
     """
     Endpoint protegido para análise financeira com IA.
-    A chave da API do Gemini fica apenas no backend.
+    Usa OpenRouter (Xiaomi MiMo, gratuito) como provedor principal.
+    Fallback para Gemini se OpenRouter não estiver configurado.
     """
+    import time
+    
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     
-    if not gemini_api_key:
-        raise HTTPException(
-            status_code=503, 
-            detail="Serviço de IA não configurado"
-        )
+    # Tenta OpenRouter primeiro (gratuito e alta performance)
+    if openrouter_api_key:
+        try:
+            from .ai_openrouter import get_financial_analysis
+            
+            analysis = await get_financial_analysis(
+                balance=request.balance,
+                monthly_income=request.monthly_income,
+                monthly_expenses=request.monthly_expenses,
+                reserves_total=request.reserves_total,
+                context=request.context,
+                openrouter_api_key=openrouter_api_key
+            )
+            
+            return {
+                "analysis": analysis,
+                "provider": "openrouter/xiaomi",
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            print(f"[AI] Erro com OpenRouter, tentando fallback: {str(e)}")
+            # Continua para o fallback
     
-    try:
-        from google import generativeai as genai
-        
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-pro')
-        
-        prompt = f"""
+    # Fallback: Gemini (se configurado)
+    if gemini_api_key:
+        try:
+            from google import generativeai as genai
+            
+            genai.configure(api_key=gemini_api_key)
+            model = genai.GenerativeModel('gemini-pro')
+            
+            prompt = f"""
 Você é um consultor financeiro experiente. Analise os dados financeiros abaixo e forneça insights práticos e personalizados.
 
 **Dados Financeiros:**
@@ -671,24 +718,31 @@ Forneça uma análise com:
 
 Seja direto, prático e empático. Máximo 300 palavras.
 """
-        
-        response = model.generate_content(prompt)
-        
-        return {
-            "analysis": response.text,
-            "timestamp": asyncio.get_event_loop().time()
-        }
-        
-    except ImportError:
-        raise HTTPException(
-            status_code=503,
-            detail="Biblioteca do Google Generative AI não instalada"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erro ao gerar análise: {str(e)}"
-        )
+            
+            response = model.generate_content(prompt)
+            
+            return {
+                "analysis": response.text,
+                "provider": "gemini",
+                "timestamp": time.time()
+            }
+            
+        except ImportError:
+            raise HTTPException(
+                status_code=503,
+                detail="Biblioteca do Google Generative AI não instalada"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro ao gerar análise: {str(e)}"
+            )
+    
+    # Nenhum provedor configurado
+    raise HTTPException(
+        status_code=503, 
+        detail="Serviço de IA não configurado. Configure OPENROUTER_API_KEY."
+    )
 
 # OFX Import Endpoints
 @app.post("/import/ofx/preview", response_model=schemas.ImportPreviewResponse)
@@ -711,8 +765,23 @@ async def preview_ofx_import(
             for cat in user_categories
         ]
 
-        # Pega a chave da API do Gemini
-        gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+        # Busca histórico de categorizações para aprendizado (few-shot)
+        previous_txns = crud.get_recent_transactions_with_category(db, user_id=current_user.id, limit=30)
+        previous_txns_data = [
+            {"description": txt_desc, "category_name": cat_name} 
+            for txt_desc, cat_name in previous_txns
+        ]
+
+        # Busca histórico de categorizações para aprendizado (few-shot)
+        previous_txns = crud.get_recent_transactions_with_category(db, user_id=current_user.id, limit=30)
+        previous_txns_data = [
+            {"description": txt_desc, "category_name": cat_name} 
+            for txt_desc, cat_name in previous_txns
+        ]
+
+        # Pega a chave da API do OpenRouter
+        # Fallback para Gemini mantido apenas como referência legado, mas OpenRouter é o principal
+        openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
 
         # Detecta duplicatas para todas as transações primeiro (operação rápida)
         transactions_metadata = []
@@ -740,39 +809,66 @@ async def preview_ofx_import(
                 "duplicate_id": duplicate_id
             })
 
-        # Processa categorizações EM PARALELO para todas as transações
-        # Limita a 5 chamadas simultâneas para não sobrecarregar a API
+        # Processa categorizações EM PARALELO para transações não-duplicadas
+        # OpenRouter/Xiaomi é rápido, mantemos configurações agressivas
         import asyncio
 
         async def categorize_transaction(metadata):
+            # Pula duplicatas - não precisa categorizar
+            if metadata["is_duplicate"]:
+                return None, 0.0
+            
             suggested_category_id, confidence = await ofx_service.suggest_category_with_ai(
                 description=metadata["transaction"].payee,
                 amount=metadata["transaction"].amount,
                 categories=categories_for_ai,
-                gemini_api_key=gemini_api_key
+                previous_transactions=previous_txns_data,
+                openrouter_api_key=openrouter_api_key
             )
             return suggested_category_id, confidence
 
-        # Executa em lotes de 5 para evitar sobrecarga
-        batch_size = 5
-        all_categorizations = []
+        # Limita categorização por IA para evitar timeout
+        # Transações além do limite ficarão sem sugestão (usuário pode categorizar manualmente)
+        MAX_AI_CATEGORIZATIONS = 50
+        transactions_to_categorize = [
+            meta for meta in transactions_metadata 
+            if not meta["is_duplicate"]
+        ][:MAX_AI_CATEGORIZATIONS]
+        
+        # Log para debug
+        total_txns = len(transactions_metadata)
+        to_categorize = len(transactions_to_categorize)
+        print(f"[OFX] Total: {total_txns} transações, Categorizando: {to_categorize} (limite: {MAX_AI_CATEGORIZATIONS})")
 
-        for i in range(0, len(transactions_metadata), batch_size):
-            batch = transactions_metadata[i:i + batch_size]
+        # Executa em lotes de 5 (Groq suporta 30 req/min)
+        batch_size = 5
+        categorization_results = {}
+
+        for i in range(0, len(transactions_to_categorize), batch_size):
+            batch = transactions_to_categorize[i:i + batch_size]
             batch_results = await asyncio.gather(
                 *[categorize_transaction(meta) for meta in batch],
                 return_exceptions=True
             )
-            all_categorizations.extend(batch_results)
+            
+            # Mapeia resultados pelo índice original
+            for meta, result in zip(batch, batch_results):
+                idx = transactions_metadata.index(meta)
+                if isinstance(result, Exception):
+                    categorization_results[idx] = (None, 0.0)
+                else:
+                    categorization_results[idx] = result
+            
+            # Delay reduzido entre batches (Groq é mais rápido)
+            if i + batch_size < len(transactions_to_categorize):
+                await asyncio.sleep(0.2)  # 200ms entre batches
 
         # Cria previews com os resultados
         previews = []
-        for metadata, categorization in zip(transactions_metadata, all_categorizations):
-            if isinstance(categorization, Exception):
-                # Se houve erro na categorização, usa None
-                suggested_category_id, confidence = None, 0.0
-            else:
-                suggested_category_id, confidence = categorization
+        for idx, metadata in enumerate(transactions_metadata):
+            # Busca resultado da categorização (pode não existir se foi limitado)
+            categorization = categorization_results.get(idx, (None, 0.0))
+            suggested_category_id, confidence = categorization
 
             preview = ofx_service.create_import_preview(
                 ofx_transaction=metadata["transaction"],
@@ -810,6 +906,68 @@ async def confirm_ofx_import(
     Confirma e executa a importação das transações OFX
     """
     try:
+        import datetime
+        import re
+        import calendar
+        from dateutil.relativedelta import relativedelta
+
+        def parse_installment_info(description: str, regex: str, separator_pattern: str) -> Optional[tuple]:
+            if not description:
+                return None
+
+            matches = list(re.finditer(regex, description, re.IGNORECASE))
+            if not matches:
+                return None
+
+            match = matches[-1]
+            current = int(match.group(1))
+            total = int(match.group(2))
+
+            if total <= 1 or current < 1 or current > total or total > 60:
+                return None
+
+            trimmed = description.strip()
+            base_description = trimmed
+            if match.end() == len(trimmed):
+                pattern = rf'[\s\-]*\b{re.escape(match.group(1))}{separator_pattern}{re.escape(match.group(2))}\b\s*$'
+                base_description = re.sub(pattern, '', trimmed, flags=re.IGNORECASE).strip() or trimmed
+
+            return current, total, base_description
+
+        def get_date_safe(year: int, month: int, day: int) -> datetime.date:
+            try:
+                return datetime.date(year, month, day)
+            except ValueError:
+                last_day = calendar.monthrange(year, month)[1]
+                return datetime.date(year, month, last_day)
+
+        card_cache = {}
+        category_cache = {}
+
+        def get_card(card_id: Optional[str]):
+            if not card_id:
+                return None
+            if card_id in card_cache:
+                return card_cache[card_id]
+            card = db.query(models.CreditCard).filter(
+                models.CreditCard.id == card_id,
+                models.CreditCard.user_id == current_user.id
+            ).first()
+            card_cache[card_id] = card
+            return card
+
+        def get_category(category_id: Optional[str]):
+            if not category_id:
+                return None
+            if category_id in category_cache:
+                return category_cache[category_id]
+            category = db.query(models.Category).filter(
+                models.Category.id == category_id,
+                models.Category.user_id == current_user.id
+            ).first()
+            category_cache[category_id] = category
+            return category
+
         imported_count = 0
         skipped_count = 0
         failed_count = 0
@@ -822,14 +980,85 @@ async def confirm_ofx_import(
                     skipped_count += 1
                     continue
 
+                category_id = txn_data.get('category_id')
+                credit_card_id = request.credit_card_id if request.credit_card_id else txn_data.get('credit_card_id')
+                description = txn_data['description']
+                recurring_rule_id = None
+
+                category = get_category(category_id)
+                is_installment_category = bool(category and re.search(r'parcel', category.name, re.IGNORECASE))
+
+                installment_info = parse_installment_info(
+                    description,
+                    r'(\d{1,3})\s*/\s*(\d{1,3})',
+                    r'\s*/\s*'
+                )
+                if not installment_info and is_installment_category:
+                    installment_info = parse_installment_info(
+                        description,
+                        r'(\d{1,3})\s*de\s*(\d{1,3})',
+                        r'\s*de\s*'
+                    )
+                if installment_info:
+                    current_installment, total_installments, base_description = installment_info
+                    if total_installments > current_installment:
+                        card = get_card(credit_card_id)
+                        due_day = card.due_day if card else None
+                        if not due_day:
+                            try:
+                                due_day = int(txn_data['date'].split('-')[2])
+                            except Exception:
+                                due_day = 1
+
+                        txn_date = datetime.datetime.strptime(txn_data['date'], "%Y-%m-%d").date()
+                        months_remaining = total_installments - current_installment
+                        end_month = txn_date + relativedelta(months=months_remaining)
+                        end_date = get_date_safe(end_month.year, end_month.month, due_day)
+
+                        rrule = f"FREQ=MONTHLY;BYMONTHDAY={due_day}"
+
+                        existing_rule = db.query(models.RecurringRule).filter(
+                            models.RecurringRule.user_id == current_user.id,
+                            models.RecurringRule.description == base_description,
+                            models.RecurringRule.amount == float(txn_data['amount']),
+                            models.RecurringRule.category_id == category_id,
+                            models.RecurringRule.credit_card_id == credit_card_id,
+                            models.RecurringRule.end_date == end_date.isoformat()
+                        ).first()
+
+                        if existing_rule:
+                            recurring_rule_id = existing_rule.id
+                        else:
+                            rule_create = schemas.RecurringRuleCreate(
+                                category_id=category_id,
+                                credit_card_id=credit_card_id,
+                                amount=float(txn_data['amount']),
+                                description=base_description,
+                                rrule=rrule,
+                                active=True,
+                                auto_create=False,
+                                end_date=end_date.isoformat()
+                            )
+                            created_rule = crud.create_recurring_rule(
+                                db=db,
+                                rule=rule_create,
+                                user_id=current_user.id
+                            )
+                            recurring_rule_id = created_rule.id
+
                 # Cria a transação
+                status = txn_data.get('status', 'PAID')
+                if credit_card_id:
+                    status = 'PENDING'
+
                 transaction_create = schemas.TransactionCreate(
-                    category_id=txn_data.get('category_id'),
-                    credit_card_id=request.credit_card_id if request.credit_card_id else txn_data.get('credit_card_id'),
+                    category_id=category_id,
+                    credit_card_id=credit_card_id,
+                    recurring_rule_id=recurring_rule_id,
                     amount=float(txn_data['amount']),
                     date=txn_data['date'],
-                    description=txn_data['description'],
-                    status=txn_data.get('status', 'PAID')
+                    description=description,
+                    status=status
                 )
 
                 # Cria no banco de dados

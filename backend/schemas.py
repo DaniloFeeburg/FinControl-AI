@@ -219,6 +219,27 @@ class Reserve(ReserveBase):
     class Config:
         from_attributes = True
 
+# Budget Limit Schemas
+class BudgetLimitBase(BaseModel):
+    category_id: str
+    monthly_limit: float
+
+    @field_validator('monthly_limit')
+    def validate_monthly_limit(cls, v):
+        if v <= 0:
+            raise ValueError('Limite mensal deve ser maior que zero')
+        return v
+
+class BudgetLimitCreate(BudgetLimitBase):
+    pass
+
+class BudgetLimit(BudgetLimitBase):
+    id: str
+    user_id: str
+
+    class Config:
+        from_attributes = True
+
 # OFX Import Schemas
 class OFXTransactionParsed(BaseModel):
     """Transação parseada do arquivo OFX"""

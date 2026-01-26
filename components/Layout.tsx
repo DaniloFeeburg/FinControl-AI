@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Receipt, Tags, PiggyBank, PieChart, Menu, X, Bot, LogOut, User as UserIcon, CalendarClock, CreditCard, Upload } from 'lucide-react';
+import { LayoutDashboard, Receipt, Tags, PiggyBank, Menu, X, Bot, LogOut, User as UserIcon, CalendarClock, CreditCard, Upload } from 'lucide-react';
 import { useStore } from '../store';
 
 interface NavItemProps {
@@ -61,11 +61,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col p-4">
-          <div className="flex items-center gap-2 px-2 mb-8 mt-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
-              <PieChart className="text-white" size={20} />
+          <div className="flex items-center justify-center px-3 py-[0.375rem] mb-9 mt-[1.125rem] w-full">
+            <div className="w-[13.5rem] mx-auto">
+              <img
+                src="/fincontrol_logo_transparente.png"
+                alt="FinControl"
+                className="w-full h-auto"
+              />
             </div>
-            <span className="text-xl font-bold tracking-tight text-white">FinControl AI</span>
           </div>
 
           <nav className="flex-1 space-y-1">
@@ -157,8 +160,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}
-        <header className="lg:hidden h-16 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
-          <span className="font-bold text-lg">FinControl</span>
+        <header className="lg:hidden h-[8.25rem] border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-30">
+          <div className="w-[10.5rem] -ml-0.5 py-[0.375rem] flex items-center justify-center">
+            <img
+              src="/fincontrol_logo_transparente.png"
+              alt="FinControl"
+              className="w-full h-auto"
+            />
+          </div>
           <button 
             onClick={() => setIsOpen(!isOpen)}
             className="p-2 text-zinc-400 hover:text-white"
