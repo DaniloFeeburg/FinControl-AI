@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store';
 import { Card, Button, Input } from '../components/ui';
-import { Plus, ArrowUpRight, ArrowDownLeft, Pencil, Trash2, X, CreditCard } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Pencil, Trash2, X, CreditCard, Check } from 'lucide-react';
 import { formatCurrency } from '../utils/projection';
 import { Transaction } from '../types';
 
@@ -25,6 +25,9 @@ export const Transactions: React.FC = () => {
   const [recurringDay, setRecurringDay] = useState('5');
   const [recurringEndDate, setRecurringEndDate] = useState('');
 
+  // Selection State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   const filteredTransactions = transactions.filter(t => {
     if (filter === 'ALL') return true;
     if (filter === 'INCOME') return t.amount > 0;
@@ -32,6 +35,39 @@ export const Transactions: React.FC = () => {
   });
 
   const getCategory = (id: string) => categories.find(c => c.id === id);
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredTransactions.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredTransactions.map(t => t.id)));
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    
+    const count = selectedIds.size;
+    if (confirm(`Tem certeza que deseja excluir ${count} transação${count > 1 ? 'ões' : ''}?`)) {
+      selectedIds.forEach(id => deleteTransaction(id));
+      setSelectedIds(new Set());
+    }
+  };
+
+  const isAllSelected = filteredTransactions.length > 0 && selectedIds.size === filteredTransactions.length;
+  const isSomeSelected = selectedIds.size > 0 && selectedIds.size < filteredTransactions.length;
 
   const resetForm = () => {
     setAmount('');
@@ -285,10 +321,42 @@ export const Transactions: React.FC = () => {
         ))}
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
+          <span className="text-sm text-red-400 font-medium">
+            {selectedIds.size} transação{selectedIds.size > 1 ? 'ões selecionadas' : ' selecionada'}
+          </span>
+          <Button 
+            onClick={handleBulkDelete} 
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
+            <Trash2 size={14} className="mr-2" />
+            Excluir {selectedIds.size > 1 ? 'Selecionadas' : 'Selecionada'}
+          </Button>
+        </div>
+      )}
+
       <div className="rounded-md border border-zinc-800 overflow-hidden">
         <table className="w-full">
           <thead className="bg-zinc-900/50 text-xs uppercase text-zinc-500">
             <tr>
+              <th className="px-4 py-3 text-left w-12">
+                <button
+                  onClick={toggleSelectAll}
+                  className="flex items-center justify-center w-5 h-5 rounded border transition-colors hover:border-emerald-500"
+                  disabled={filteredTransactions.length === 0}
+                >
+                  {isAllSelected ? (
+                    <div className="w-5 h-5 bg-emerald-500 rounded flex items-center justify-center">
+                      <Check size={12} className="text-white" />
+                    </div>
+                  ) : isSomeSelected ? (
+                    <div className="w-5 h-5 bg-emerald-500/50 rounded flex items-center justify-center">
+                      <Check size={12} className="text-white" />
+                    </div>
+                  ) : null}
+                </button>
+              </th>
               <th className="px-4 py-3 text-left">Data</th>
               <th className="px-4 py-3 text-left">Descrição</th>
               <th className="px-4 py-3 text-left">Categoria</th>
@@ -300,8 +368,21 @@ export const Transactions: React.FC = () => {
             {filteredTransactions.map(t => {
               const cat = getCategory(t.category_id);
               const isExpense = t.amount < 0;
+              const isSelected = selectedIds.has(t.id);
               return (
-                <tr key={t.id} className="hover:bg-zinc-900/30 transition-colors">
+                <tr key={t.id} className={`hover:bg-zinc-900/30 transition-colors ${isSelected ? 'bg-emerald-500/10' : ''}`}>
+                  <td className="px-4 py-4">
+                    <button
+                      onClick={() => toggleSelection(t.id)}
+                      className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${
+                        isSelected 
+                          ? 'bg-emerald-500 border-emerald-500' 
+                          : 'border-zinc-600 hover:border-emerald-500'
+                      }`}
+                    >
+                      {isSelected && <Check size={12} className="text-white" />}
+                    </button>
+                  </td>
                   <td className="px-4 py-4 text-sm text-zinc-400 whitespace-nowrap">
                     {new Date(t.date).toLocaleDateString('pt-BR')}
                   </td>

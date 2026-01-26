@@ -1,131 +1,228 @@
 # FinControl AI
 
-O **FinControl AI** é uma aplicação completa para gestão de finanças pessoais, desenvolvida para oferecer controle total sobre receitas, despesas, orçamentos e metas financeiras. O sistema é construído com foco em privacidade (isolamento de dados por usuário), segurança (autenticação JWT) e usabilidade.
+SaaS de gestão financeira de alta performance com projeções e insights de IA. Este repositório contém o código fonte do backend (FastAPI) e frontend (React), além de scripts de automação para deploy no Google Cloud.
 
-## 📋 Visão Geral
+> **Nota:** Este README centraliza toda a documentação técnica, operacional e de deploy do projeto.
 
-O aplicativo permite que usuários gerenciem suas finanças através de um painel intuitivo. As principais funcionalidades incluem o registro de transações, organização por categorias personalizáveis, definição de regras recorrentes e gestão de reservas financeiras (metas).
+---
 
-## 🚀 Tecnologias Utilizadas
+## 📋 Índice
 
-A aplicação utiliza uma arquitetura moderna e escalável:
+1. [Visão Geral e Tecnologias](#-visão-geral-e-tecnologias)
+2. [Começando (Quickstart)](#-começando-quickstart)
+3. [Funcionalidades de IA e Importação OFX](#-funcionalidades-de-ia-e-importação-ofx)
+    - [Importação OFX Inteligente](#importação-ofx-inteligente)
+    - [Integração com OpenRouter](#integração-com-openrouter-xiaomi-mimo-v2-flash)
+4. [Configuração de Secrets e Segurança](#-configuração-de-secrets-e-segurança)
+5. [Guia de Deploy (Google Cloud Run)](#-guia-de-deploy-google-cloud-run)
+    - [Deploy Automático](#deploy-automático-via-cloud-build)
+    - [Checklist de Deploy](#checklist-de-deploy)
+6. [Troubleshooting e Debug](#-troubleshooting-e-debug)
+7. [Histórico de Mudanças (Changelog)](#-histórico-de-mudanças-changelog)
 
-*   **Frontend:** React (Vite), TypeScript, TailwindCSS, Zustand (Gerenciamento de Estado).
-*   **Backend:** Python (FastAPI), SQLAlchemy (ORM), Pydantic (Validação), Python-Jose (JWT).
-*   **Banco de Dados:** PostgreSQL (Supabase).
-*   **Infraestrutura:** Docker, Nginx (Reverse Proxy), Google Cloud Run.
+---
 
-## 🛠️ Funcionalidades Detalhadas
+## 🚀 Visão Geral e Tecnologias
 
-### 1. Autenticação e Segurança
-*   **Registro e Login:** Usuários podem criar contas com nome, email e senha.
-*   **JWT (JSON Web Token):** A autenticação é gerenciada via tokens JWT (algoritmo HS256) com validade de 7 dias.
-*   **Isolamento de Dados:** Todos os recursos (transações, categorias, reservas) são estritamente vinculados ao ID do usuário (`user_id`), garantindo que um usuário nunca acesse dados de outro.
-*   **Validações:**
-    *   **Email:** Validação de formato via Regex.
-    *   **Senha:** Mínimo de 6 caracteres, máximo de 72 bytes (limitação do bcrypt). Senhas são armazenadas como hash seguro.
+O FinControl AI é uma plataforma para gestão de finanças pessoais que utiliza inteligência artificial para categorização automática e insights.
 
-### 2. Gestão de Transações
-O núcleo do sistema é o registro de movimentações financeiras.
-*   **Propriedades:** Valor, Data, Descrição, Categoria, Status (Pago/Pendente).
-*   **Cálculos:**
-    *   **Saldo Total:** Soma de todas as transações (Receitas - Despesas). *Nota: O sistema espera que despesas sejam registradas com valores negativos ou processadas conforme a lógica de entrada.*
-    *   As transações são ordenadas por data (mais recentes primeiro).
+### Stack Tecnológico
+- **Backend**: Python 3.12+, FastAPI, SQLAlchemy, Pydantic.
+- **Frontend**: React 19+, TypeScript, TailwindCSS, Vite.
+- **Banco de Dados**: PostgreSQL.
+- **IA**: Integração com Google Gemini e OpenRouter (Xiaomi MiMo-V2-Flash) para categorização.
+- **Infraestrutura**: Google Cloud Run, Cloud Build, Docker, Nginx.
 
-### 3. Categorias
-Permite classificar as transações para melhor análise.
-*   **Tipos:** Receita (Income) ou Despesa (Expense).
-*   **Atributos:** Nome, Cor, Ícone, e se é uma despesa Fixa ou Variável.
-*   **Regra de Negócio:** Categorias são criadas especificamente para cada usuário, permitindo personalização total.
+---
 
-### 4. Regras Recorrentes (Recurring Rules)
-Funcionalidade para registrar despesas ou receitas que se repetem.
-*   **Estrutura:** Define Categoria, Valor, Descrição e a Regra de Recorrência (RRule string).
-*   **Funcionamento:** Atualmente, o sistema permite o cadastro e armazenamento dessas regras para referência e planejamento futuro.
-
-### 5. Reservas (Metas Financeiras)
-Uma ferramenta poderosa para separar dinheiro do saldo principal para objetivos específicos (ex: Viagem, Fundo de Emergência).
-*   **Atributos:** Nome, Valor Alvo (Meta), Valor Atual, Prazo (Deadline).
-*   **Histórico:** O sistema rastreia depósitos e saques em cada reserva.
-*   **Impacto no Saldo:**
-    *   **Saldo Disponível:** Calculado como `Saldo Total - Total em Reservas`. Isso ajuda o usuário a saber quanto dinheiro realmente pode gastar sem comprometer suas metas.
-
-### 6. Relatórios e Gráficos
-
-O sistema oferece visualizações avançadas para análise financeira:
-
-*   **Fluxo de Caixa Projetado (180 Dias):**
-    *   **Objetivo:** Prever o saldo futuro com base no saldo atual e regras recorrentes.
-    *   **Lógica:** O algoritmo projeta o saldo dia a dia para os próximos 6 meses.
-    *   **Fatores Considerados:**
-        *   Saldo Inicial: Calculado considerando apenas transações realizadas até a data atual.
-        *   **Transações Futuras:** Receitas e Despesas cadastradas com data posterior à atual são incluídas na projeção no dia específico de seu vencimento.
-        *   **Regras Recorrentes:** Receitas e Despesas fixas cadastradas são aplicadas automaticamente nos dias de vencimento (`BYMONTHDAY`).
-    *   **Visualização:** Gráfico de área mostrando a tendência de crescimento ou redução do patrimônio ao longo do tempo.
-
-*   **Gráfico de Receitas vs. Despesas (6 Meses):**
-    *   **Objetivo:** Comparar o desempenho financeiro mês a mês.
-    *   **Janela de Tempo:** Últimos 6 meses (incluindo o mês atual).
-    *   **Agregação:** As transações são agrupadas por mês e separadas em:
-        *   **Receitas (Income):** Soma de transações positivas.
-        *   **Despesas (Expense):** Soma do valor absoluto de transações negativas.
-    *   **Visualização:** Gráfico de barras lado a lado para fácil comparação visual de superávit ou déficit mensal.
-
-*   **Análise Inteligente (IA):**
-    *   Integração opcional com Google Gemini para gerar insights financeiros personalizados baseados nos dados atuais do usuário (Saldo, Gastos, Metas).
-
-## 📐 Cálculos e Regras de Negócio
-
-### Cálculo de Saldos
-O sistema apresenta dois tipos de saldo para o usuário:
-
-1.  **Saldo Geral (Total Balance):**
-    *   Fórmula: `∑ (Todas as Transações)`
-    *   Representa todo o dinheiro que o usuário possui, incluindo o que já foi separado para reservas.
-
-2.  **Saldo Disponível (Available Balance):**
-    *   Fórmula: `Saldo Geral - ∑ (Valor Atual de Todas as Reservas)`
-    *   Representa o valor livre para gastos do dia a dia, excluindo o montante comprometido com metas.
-
-### Validações de Entrada
-*   **API (Backend):** O backend utiliza Pydantic para garantir que todos os dados recebidos (ex: criar transação) estejam no formato correto antes de processar.
-*   **Frontend:** O gerenciamento de estado via Zustand intercepta respostas 401 (Não Autorizado) e realiza logout automático, protegendo a sessão.
-
-## 🐳 Executando o Projeto
+## ⚡ Começando (Quickstart)
 
 ### Pré-requisitos
-*   Docker e Docker Compose instalados.
+- Node.js 20+
+- Python 3.12+
+- Docker (opcional, para rodar localmente com containers)
+- Google Cloud CLI (para deploy)
 
-### Passos para Rodar Localmente
+### Instalação Local
 
-1.  **Construir a Imagem:**
+1.  **Backend**:
     ```bash
-    docker build -t fincontrol .
+    cd backend
+    pip install -r requirements.txt
+    uvicorn main:app --reload
     ```
 
-2.  **Executar o Container:**
+2.  **Frontend**:
     ```bash
-    docker run -p 8080:8080 -e DATABASE_URL="sua_string_de_conexao_postgres" fincontrol
+    npm install
+    npm run dev
     ```
-    *Nota: Se a variável `DATABASE_URL` não for fornecida, o sistema tentará usar uma conexão padrão (não recomendado para produção).*
 
-3.  **Acessar:**
-    Abra o navegador em `http://localhost:8080`.
+---
 
-### Estrutura do Container
-O container Docker segue uma abordagem *multi-stage*:
-1.  **Frontend Build:** Compila o React/Vite para arquivos estáticos.
-2.  **Backend Setup:** Instala dependências Python.
-3.  **Runtime (Final):** Utiliza Nginx para servir o frontend estático e fazer proxy reverso das chamadas de API (`/api/`) para o servidor Uvicorn (FastAPI) rodando em background.
+## 🤖 Funcionalidades de IA e Importação OFX
 
-## 📂 Estrutura de Arquivos
+### Importação OFX Inteligente
 
-*   `backend/`: Código fonte da API (Python/FastAPI).
-    *   `models.py`: Modelos do banco de dados (SQLAlchemy).
-    *   `schemas.py`: Schemas de validação (Pydantic).
-    *   `crud.py`: Lógica de banco de dados.
-    *   `auth.py`: Autenticação e segurança.
-*   `src/` (root no frontend): Código fonte do Frontend (React).
-    *   `store.ts`: Gerenciamento de estado global e lógica de negócios do frontend.
-    *   `App.tsx`: Roteamento e layout principal.
-    *   `components/`: Componentes de UI reutilizáveis.
+A funcionalidade de importação OFX permite que usuários importem transações bancárias de arquivos OFX com sugestões inteligentes.
+
+**Recursos:**
+- **Parser Robusto**: Suporte a múltiplos encodings e tipos de conta via `ofxparse`.
+- **Detecção de Duplicatas**: Algoritmo que verifica data, valor e descrição.
+- **Categorização via IA**: Utiliza modelos de LLM para sugerir categorias.
+
+### Integração com OpenRouter (Xiaomi MiMo-V2-Flash)
+
+Configuração avançada para redução de custos e latência usando OpenRouter.
+
+**Configuração (`.env`):**
+```env
+OPENROUTER_API_KEY=sua_chave_aqui
+```
+
+**Implementação (`backend/ofx_service.py`):**
+O sistema utiliza headers personalizados (`HTTP-Referer`, `X-Title`) e configurações de roteamento (`allow_fallbacks: true`) para garantir alta disponibilidade.
+
+```python
+def suggest_category_with_openrouter(description, amount, categories):
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+    )
+    # ... configuração de fallback e roteamento
+    response = client.chat.completions.create(
+        model="xiaomi/mimo-v2-flash:free",
+        extra_body={
+            "provider": {
+                "sort": "latency",
+                "allow_fallbacks": True,
+            }
+        },
+        # ...
+    )
+```
+
+---
+
+## 🔐 Configuração de Secrets e Segurança
+
+O projeto segue práticas rigorosas de segurança ("Secure by Default"). A aplicação **não inicia** se as variáveis críticas não estiverem presentes.
+
+### Secrets Necessários (Google Cloud Secret Manager)
+
+Execute os comandos abaixo para configurar seu ambiente de produção:
+
+1.  **DATABASE_URL** (PostgreSQL Connection String):
+    ```bash
+    echo -n "postgresql://user:pass@host:5432/db" | gcloud secrets create DATABASE_URL --data-file=-
+    ```
+
+2.  **SECRET_KEY** (JWT Token - Mínimo 32 chars):
+    ```bash
+    python -c 'import secrets; print(secrets.token_urlsafe(32))' | gcloud secrets create SECRET_KEY --data-file=-
+    ```
+
+3.  **ALLOWED_ORIGINS** (CORS):
+    ```bash
+    echo -n "https://seu-app.a.run.app" | gcloud secrets create ALLOWED_ORIGINS --data-file=-
+    ```
+
+4.  **GEMINI_API_KEY** / **OPENROUTER_API_KEY** (IA - Opcional):
+    ```bash
+    echo -n "sua_api_key" | gcloud secrets create GEMINI_API_KEY --data-file=-
+    ```
+
+### Permissões do Cloud Build
+Garanta que o serviço de build tenha acesso aos secrets:
+```bash
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format="value(projectNumber)")
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+---
+
+## ☁️ Guia de Deploy (Google Cloud Run)
+
+Este projeto suporta **deploy automático** via Cloud Build. A cada push na branch `main`, o pipeline de CI/CD é acionado.
+
+### Deploy Automático via Cloud Build
+
+1.  **Conectar Repositório**: Conecte seu GitHub ao Cloud Build via Console.
+2.  **Trigger**: Crie um gatilho para a branch `main` usando `cloudbuild.yaml`.
+3.  **Push**:
+    ```bash
+    git add .
+    git commit -m "Deploy automático"
+    git push origin main
+    ```
+
+### Checklist de Deploy
+
+Antes de considerar o deploy finalizado, verifique:
+- [ ] **Secrets**: Todos os secrets obrigatórios existem? (`gcloud secrets list`)
+- [ ] **Permissões**: O Cloud Build tem a role `secretAccessor`?
+- [ ] **Banco de Dados**: O Cloud Run consegue acessar o banco?
+- [ ] **Índices**: Os índices de performance foram aplicados?
+
+**Aplicar Índices no Banco:**
+```bash
+python -m backend.add_indexes
+```
+
+---
+
+## 🛠 Troubleshooting e Debug
+
+### Comandos Úteis
+
+**Ver logs em tempo real:**
+```bash
+gcloud run services logs tail fincontrol-ai --region=us-central1
+```
+
+**Filtrar erros:**
+```bash
+gcloud run services logs read fincontrol-ai --region=us-central1 --limit=100 | grep ERROR
+```
+
+**Verificar URL do serviço:**
+```bash
+gcloud run services describe fincontrol-ai --region=us-central1 --format="value(status.url)"
+```
+
+### Problemas Comuns
+- **Erro 502/503**: Geralmente indica que o container não iniciou a tempo. Verifique se o `entrypoint.sh` está executando corretamente e se o healthcheck (`/api/`) está respondendo.
+- **DATABASE_URL not set**: O secret não foi injetado corretamente. Verifique o `cloudbuild.yaml`.
+
+---
+
+## 📝 Histórico de Mudanças (Changelog)
+
+### [2.0.0] - Dezembro 2025 - "Security & Performance Update"
+
+#### 🔒 Segurança
+- **Credenciais removidas do código**: `DATABASE_URL` e `SECRET_KEY` agora são estritamente via variáveis de ambiente.
+- **CORS Estrito**: Wildcard `*` removido em favor de `ALLOWED_ORIGINS`.
+- **Proteção de API Key**: Endpoints que expunham chaves de IA foram removidos/protegidos.
+
+#### 📊 Performance
+- **Índices de Banco de Dados**: Adicionados 8 índices compostos (`idx_transaction_user_date`, etc.) melhorando queries em até 95%.
+- **Paginação**: Novos parâmetros `skip`/`limit` no endpoint `/transactions`.
+
+#### ✨ Funcionalidades
+- **Validação de Cartão**: Impede datas de vencimento anteriores ao fechamento.
+- **Validação RRule**: Garante integridade de regras recorrentes.
+- **Documentação**: Centralização da documentação no README.
+
+### Arquivos Modificados/Criados na v2.0
+- `backend/database.py` (Segurança)
+- `backend/auth.py` (Segurança)
+- `backend/main.py` (Segurança + Paginação)
+- `backend/models.py` (Índices)
+- `backend/schemas.py` (Validações)
+- `backend/add_indexes.py` (Script de migração)
+
+---
+*Documentação compilada automaticamente a partir dos arquivos do projeto.*
