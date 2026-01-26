@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { CreditCard, Transaction } from '../types';
 import { Plus, CreditCard as CreditCardIcon, Trash2, Edit2, Calendar, TrendingUp, AlertCircle, X, Check, BarChart3 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function CreditCards() {
@@ -330,7 +331,15 @@ export default function CreditCards() {
                                 <div className="h-64 w-full">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart data={projectionChartData}>
-                                            <XAxis dataKey="month" stroke="#71717a" fontSize={12} />
+                                            <XAxis 
+                                                dataKey="month" 
+                                                stroke="#71717a" 
+                                                fontSize={12}
+                                                tickFormatter={(monthStr) => {
+                                                    const date = parse(monthStr, 'yyyy-MM', new Date());
+                                                    return format(date, 'MMM', { locale: ptBR });
+                                                }}
+                                            />
                                             <YAxis stroke="#71717a" fontSize={12} tickFormatter={(val) => `R$ ${val/100}`} />
                                             <Tooltip
                                                 content={<ProjectionTooltip />}
