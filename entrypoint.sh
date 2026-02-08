@@ -18,9 +18,9 @@ if [ -z "$SECRET_KEY" ]; then
     exit 1
 fi
 
-if [ -z "$ZAI_API_KEY" ]; then
-    echo "ERROR: ZAI_API_KEY environment variable is not set!"
-    echo "Please configure the ZAI_API_KEY secret in Google Cloud."
+if [ -z "$OPENROUTER_API_KEY" ]; then
+    echo "ERROR: OPENROUTER_API_KEY environment variable is not set!"
+    echo "Please configure the OPENROUTER_API_KEY secret in Google Cloud."
     exit 1
 fi
 

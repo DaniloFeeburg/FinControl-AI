@@ -30,7 +30,7 @@ O FinControl AI é uma plataforma para gestão de finanças pessoais que utiliza
 - **Backend**: Python 3.12+, FastAPI, SQLAlchemy, Pydantic.
 - **Frontend**: React 19+, TypeScript, TailwindCSS, Vite.
 - **Banco de Dados**: PostgreSQL.
-- **IA**: Integração com Google Gemini e OpenRouter (Xiaomi MiMo-V2-Flash) para categorização.
+- **IA**: Integração com OpenRouter (Mistral Small e Qwen) para categorização e análise financeira.
 - **Infraestrutura**: Google Cloud Run, Cloud Build, Docker, Nginx.
 
 ---
@@ -71,35 +71,33 @@ A funcionalidade de importação OFX permite que usuários importem transações
 - **Detecção de Duplicatas**: Algoritmo que verifica data, valor e descrição.
 - **Categorização via IA**: Utiliza modelos de LLM para sugerir categorias.
 
-### Integração com OpenRouter (Xiaomi MiMo-V2-Flash)
+### Integração com OpenRouter
 
-Configuração avançada para redução de custos e latência usando OpenRouter.
+O sistema utiliza OpenRouter para categorização de transações e análise financeira com modelos gratuitos.
+
+**Modelos Utilizados:**
+- **Primary**: `mistralai/mistral-small-3.1-24b-instruct:free` (alta performance)
+- **Fallback**: `qwen/qwen3-next-80b-a3b-instruct:free` (alternativa robusta)
 
 **Configuração (`.env`):**
 ```env
 OPENROUTER_API_KEY=sua_chave_aqui
+OPENROUTER_MODEL=mistralai/mistral-small-3.1-24b-instruct:free
+OPENROUTER_SITE_URL=https://seu-site.com
+OPENROUTER_APP_NAME=FinControl-AI
 ```
 
-**Implementação (`backend/ofx_service.py`):**
-O sistema utiliza headers personalizados (`HTTP-Referer`, `X-Title`) e configurações de roteamento (`allow_fallbacks: true`) para garantir alta disponibilidade.
+**Funcionalidades:**
+- **Fallback Automático**: Em caso de erro, timeout ou JSON inválido, o sistema alterna automaticamente para o modelo fallback
+- **Validação de JSON**: Respostas são validadas e reparadas quando necessário
+- **Logs Informativos**: Registro de modelo usado, latência, validação JSON e eventos de fallback
 
-```python
-def suggest_category_with_openrouter(description, amount, categories):
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("OPENROUTER_API_KEY"),
-    )
-    # ... configuração de fallback e roteamento
-    response = client.chat.completions.create(
-        model="xiaomi/mimo-v2-flash:free",
-        extra_body={
-            "provider": {
-                "sort": "latency",
-                "allow_fallbacks": True,
-            }
-        },
-        # ...
-    )
+**Secrets do Google Cloud:**
+```bash
+# Criar secret da API Key
+echo -n "sua_api_key" | gcloud secrets create OPENROUTER_API_KEY --data-file=-
+
+# Configurar variáveis opcionais no cloudbuild.yaml se necessário
 ```
 
 ---
@@ -127,9 +125,9 @@ Execute os comandos abaixo para configurar seu ambiente de produção:
     echo -n "https://seu-app.a.run.app" | gcloud secrets create ALLOWED_ORIGINS --data-file=-
     ```
 
-4.  **GEMINI_API_KEY** / **OPENROUTER_API_KEY** (IA - Opcional):
+4.  **OPENROUTER_API_KEY** (IA - Obrigatório):
     ```bash
-    echo -n "sua_api_key" | gcloud secrets create GEMINI_API_KEY --data-file=-
+    echo -n "sua_api_key" | gcloud secrets create OPENROUTER_API_KEY --data-file=-
     ```
 
 ### Permissões do Cloud Build
@@ -199,6 +197,28 @@ gcloud run services describe fincontrol-ai --region=us-central1 --format="value(
 ---
 
 ## 📝 Histórico de Mudanças (Changelog)
+
+### [3.0.0] - Fevereiro 2026 - "OpenRouter Migration"
+
+#### 🤖 IA
+- **Migração para OpenRouter**: Substituição completa de Z.AI por OpenRouter
+- **Dual Model Strategy**: Implementação de primary model (`mistralai/mistral-small-3.1-24b-instruct:free`) e fallback (`qwen/qwen3-next-80b-a3b-instruct:free`)
+- **Fallback Automático**: Sistema alterna automaticamente em caso de erro, timeout ou JSON inválido
+- **Validação de JSON**: Respostas são validadas e reparadas quando necessário
+- **Logs Informativos**: Registro de modelo usado, latência, validação JSON e eventos de fallback
+
+#### 🔧 Configuração
+- **Variáveis de Ambiente**: Novas variáveis `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME`
+- **Secrets do Cloud**: Atualização de `cloudbuild.yaml` e `entrypoint.sh` para usar `OPENROUTER_API_KEY`
+
+#### 📝 Arquivos Modificados
+- `backend/ai_openrouter.py` (Novo arquivo, renomeado de ai_zai.py)
+- `backend/main.py` (Atualização de imports e chamadas)
+- `backend/ofx_service.py` (Atualização de imports e chamadas)
+- `env.example` (Atualização de variáveis de ambiente)
+- `cloudbuild.yaml` (Atualização de secrets)
+- `entrypoint.sh` (Atualização de validação)
+- `README.md` (Atualização de documentação)
 
 ### [2.0.0] - Dezembro 2025 - "Security & Performance Update"
 

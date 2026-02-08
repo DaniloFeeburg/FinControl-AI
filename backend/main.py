@@ -659,18 +659,15 @@ async def get_ai_analysis(
 ):
     """
     Endpoint protegido para análise financeira com IA.
-    Usa Z.AI (GLM-4.7) como provedor principal.
-    Fallback para Gemini se Z.AI não estiver configurado.
+    Usa OpenRouter como provedor principal.
     """
     import time
     
-    zai_api_key = os.getenv("ZAI_API_KEY")
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
     
-    # Tenta Z.AI primeiro (GLM-4.7, alta performance)
-    if zai_api_key:
+    if openrouter_api_key:
         try:
-            from .ai_zai import get_financial_analysis
+            from .ai_openrouter import get_financial_analysis
             
             analysis = await get_financial_analysis(
                 balance=request.balance,
@@ -678,61 +675,17 @@ async def get_ai_analysis(
                 monthly_expenses=request.monthly_expenses,
                 reserves_total=request.reserves_total,
                 context=request.context,
-                zai_api_key=zai_api_key
+                openrouter_api_key=openrouter_api_key
             )
             
             return {
                 "analysis": analysis,
-                "provider": "zai/glm-4.7",
+                "provider": "openrouter",
                 "timestamp": time.time()
             }
             
         except Exception as e:
-            print(f"[AI] Erro com Z.AI, tentando fallback: {str(e)}")
-            # Continua para o fallback
-    
-    # Fallback: Gemini (se configurado)
-    if gemini_api_key:
-        try:
-            from google import generativeai as genai
-            
-            genai.configure(api_key=gemini_api_key)
-            model = genai.GenerativeModel('gemini-pro')
-            
-            prompt = f"""
-Você é um consultor financeiro experiente. Analise os dados financeiros abaixo e forneça insights práticos e personalizados.
-
-**Dados Financeiros:**
-- Saldo Total: R$ {request.balance:.2f}
-- Receita Mensal: R$ {request.monthly_income:.2f}
-- Despesas Mensais: R$ {request.monthly_expenses:.2f}
-- Total em Reservas: R$ {request.reserves_total:.2f}
-
-{f"**Contexto adicional:** {request.context}" if request.context else ""}
-
-Forneça uma análise com:
-1. Diagnóstico da situação financeira atual
-2. Pontos de atenção e alertas
-3. Recomendações práticas e acionáveis
-4. Sugestões de metas financeiras
-
-Seja direto, prático e empático. Máximo 300 palavras.
-"""
-            
-            response = model.generate_content(prompt)
-            
-            return {
-                "analysis": response.text,
-                "provider": "gemini",
-                "timestamp": time.time()
-            }
-            
-        except ImportError:
-            raise HTTPException(
-                status_code=503,
-                detail="Biblioteca do Google Generative AI não instalada"
-            )
-        except Exception as e:
+            print(f"[AI] Erro ao gerar análise: {str(e)}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Erro ao gerar análise: {str(e)}"
@@ -741,7 +694,7 @@ Seja direto, prático e empático. Máximo 300 palavras.
     # Nenhum provedor configurado
     raise HTTPException(
         status_code=503, 
-        detail="Serviço de IA não configurado. Configure ZAI_API_KEY."
+        detail="Serviço de IA não configurado. Configure OPENROUTER_API_KEY."
     )
 
 # OFX Import Endpoints
@@ -779,9 +732,8 @@ async def preview_ofx_import(
             for txt_desc, cat_name in previous_txns
         ]
 
-        # Pega a chave da API do Z.AI
-        # Fallback para Gemini mantido apenas como referência legado, mas Z.AI é o principal
-        zai_api_key = os.getenv("ZAI_API_KEY", "")
+        # Pega a chave da API do OpenRouter
+        openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
 
         # Detecta duplicatas para todas as transações primeiro (operação rápida)
         transactions_metadata = []
@@ -810,7 +762,7 @@ async def preview_ofx_import(
             })
 
         # Processa categorizações EM PARALELO para transações não-duplicadas
-        # Z.AI/GLM-4.7 é rápido, mantemos configurações agressivas
+        # OpenRouter é rápido, mantemos configurações agressivas
         import asyncio
 
         async def categorize_transaction(metadata):
@@ -823,7 +775,7 @@ async def preview_ofx_import(
                 amount=metadata["transaction"].amount,
                 categories=categories_for_ai,
                 previous_transactions=previous_txns_data,
-                zai_api_key=zai_api_key
+                openrouter_api_key=openrouter_api_key
             )
             return suggested_category_id, confidence
 
