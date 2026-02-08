@@ -13,5 +13,5 @@ python-dateutil
 ofxparse==0.21
 
 # IA Providers
-openai>=1.0.0  # Para OpenRouter (Xiaomi MiMo, etc)
+openai>=1.0.0  # Para Z.AI (GLM-4.7, GLM-4.5-air) - Protocolo OpenAI compatível
 google-genai>=0.2.0  # Para Gemini (fallback/opcional)

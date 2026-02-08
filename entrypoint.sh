@@ -18,6 +18,12 @@ if [ -z "$SECRET_KEY" ]; then
     exit 1
 fi
 
+if [ -z "$ZAI_API_KEY" ]; then
+    echo "ERROR: ZAI_API_KEY environment variable is not set!"
+    echo "Please configure the ZAI_API_KEY secret in Google Cloud."
+    exit 1
+fi
+
 echo "✓ Critical environment variables are set"
 
 # Step 1: Inicializar tabelas do banco

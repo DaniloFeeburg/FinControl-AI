@@ -659,18 +659,18 @@ async def get_ai_analysis(
 ):
     """
     Endpoint protegido para análise financeira com IA.
-    Usa OpenRouter (Xiaomi MiMo, gratuito) como provedor principal.
-    Fallback para Gemini se OpenRouter não estiver configurado.
+    Usa Z.AI (GLM-4.7) como provedor principal.
+    Fallback para Gemini se Z.AI não estiver configurado.
     """
     import time
     
-    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+    zai_api_key = os.getenv("ZAI_API_KEY")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     
-    # Tenta OpenRouter primeiro (gratuito e alta performance)
-    if openrouter_api_key:
+    # Tenta Z.AI primeiro (GLM-4.7, alta performance)
+    if zai_api_key:
         try:
-            from .ai_openrouter import get_financial_analysis
+            from .ai_zai import get_financial_analysis
             
             analysis = await get_financial_analysis(
                 balance=request.balance,
@@ -678,17 +678,17 @@ async def get_ai_analysis(
                 monthly_expenses=request.monthly_expenses,
                 reserves_total=request.reserves_total,
                 context=request.context,
-                openrouter_api_key=openrouter_api_key
+                zai_api_key=zai_api_key
             )
             
             return {
                 "analysis": analysis,
-                "provider": "openrouter/xiaomi",
+                "provider": "zai/glm-4.7",
                 "timestamp": time.time()
             }
             
         except Exception as e:
-            print(f"[AI] Erro com OpenRouter, tentando fallback: {str(e)}")
+            print(f"[AI] Erro com Z.AI, tentando fallback: {str(e)}")
             # Continua para o fallback
     
     # Fallback: Gemini (se configurado)
@@ -741,7 +741,7 @@ Seja direto, prático e empático. Máximo 300 palavras.
     # Nenhum provedor configurado
     raise HTTPException(
         status_code=503, 
-        detail="Serviço de IA não configurado. Configure OPENROUTER_API_KEY."
+        detail="Serviço de IA não configurado. Configure ZAI_API_KEY."
     )
 
 # OFX Import Endpoints
@@ -779,9 +779,9 @@ async def preview_ofx_import(
             for txt_desc, cat_name in previous_txns
         ]
 
-        # Pega a chave da API do OpenRouter
-        # Fallback para Gemini mantido apenas como referência legado, mas OpenRouter é o principal
-        openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+        # Pega a chave da API do Z.AI
+        # Fallback para Gemini mantido apenas como referência legado, mas Z.AI é o principal
+        zai_api_key = os.getenv("ZAI_API_KEY", "")
 
         # Detecta duplicatas para todas as transações primeiro (operação rápida)
         transactions_metadata = []
@@ -810,7 +810,7 @@ async def preview_ofx_import(
             })
 
         # Processa categorizações EM PARALELO para transações não-duplicadas
-        # OpenRouter/Xiaomi é rápido, mantemos configurações agressivas
+        # Z.AI/GLM-4.7 é rápido, mantemos configurações agressivas
         import asyncio
 
         async def categorize_transaction(metadata):
@@ -823,7 +823,7 @@ async def preview_ofx_import(
                 amount=metadata["transaction"].amount,
                 categories=categories_for_ai,
                 previous_transactions=previous_txns_data,
-                openrouter_api_key=openrouter_api_key
+                zai_api_key=zai_api_key
             )
             return suggested_category_id, confidence
 

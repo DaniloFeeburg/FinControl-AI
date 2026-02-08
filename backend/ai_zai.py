@@ -1,34 +1,34 @@
 """
-Serviço de IA usando OpenRouter (Xiaomi MiMo, etc.)
-Substitui Groq/Gemini como provedor principal.
+Serviço de IA usando Z.AI (GLM-4.7, GLM-4.5-air)
+Substitui OpenRouter como provedor principal.
 
 Configuração:
-- Modelo: xiaomi/mimo-v2-flash:free (Gratuito, Rápido)
-- Roteamento: Prioriza latência, permite fallbacks
+- Modelo: glm-4.7 (Padrão, tarefas complexas)
+- Modelo: glm-4.5-air (Leve, resposta mais rápida)
+- Endpoint: https://api.z.ai/api/paas/v4
 """
 import os
 import asyncio
 from typing import Optional, List, Tuple
 
-# Constantes do OpenRouter
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "xiaomi/mimo-v2-flash:free"
+# Constantes do Z.AI
+ZAI_BASE_URL = "https://api.z.ai/api/paas/v4"
+DEFAULT_MODEL = "glm-4.7"
 
 def _get_client(api_key: Optional[str] = None):
     """
-    Cria cliente OpenAI configurado para OpenRouter
+    Cria cliente OpenAI configurado para Z.AI
     """
     from openai import OpenAI
     
-    key = api_key or os.getenv("OPENROUTER_API_KEY", "")
-    # Remove caracteres inválidos
+    key = api_key or os.getenv("ZAI_API_KEY", "")
     key = key.strip().replace('\r', '').replace('\n', '')
     
     if not key:
         return None
     
     return OpenAI(
-        base_url=OPENROUTER_BASE_URL,
+        base_url=ZAI_BASE_URL,
         api_key=key
     )
 
@@ -38,11 +38,11 @@ async def get_financial_analysis(
     monthly_expenses: float,
     reserves_total: float,
     context: Optional[str] = None,
-    openrouter_api_key: Optional[str] = None,
+    zai_api_key: Optional[str] = None,
     timeout_seconds: int = 45
 ) -> str:
     """
-    Gera análise financeira usando OpenRouter
+    Gera análise financeira usando Z.AI
     
     Args:
         balance: Saldo total em reais (float)
@@ -50,16 +50,16 @@ async def get_financial_analysis(
         monthly_expenses: Despesas mensais em reais (float)
         reserves_total: Total em reservas em reais (float)
         context: Contexto adicional opcional
-        openrouter_api_key: Chave da API OpenRouter
+        zai_api_key: Chave da API Z.AI
         timeout_seconds: Timeout da requisição
     
     Returns:
         Texto da análise financeira
     """
-    client = _get_client(openrouter_api_key)
+    client = _get_client(zai_api_key)
     
     if not client:
-        return "Configure a variável OPENROUTER_API_KEY para habilitar análises inteligentes."
+        return "Configure a variável ZAI_API_KEY para habilitar análises inteligentes."
 
     prompt = f"""Você é um consultor financeiro experiente. Analise os dados abaixo e forneça insights práticos.
 
@@ -95,18 +95,7 @@ Seja direto, prático e empático. Máximo 400 palavras."""
                 ],
                 temperature=0.7,
                 max_tokens=1024,
-                top_p=1,
-                # Parâmetros específicos do OpenRouter
-                extra_body={
-                    "provider": {
-                        "sort": "latency",
-                        "allow_fallbacks": True
-                    }
-                },
-                extra_headers={
-                    "HTTP-Referer": "https://github.com/DaniloFeeburg/FinControl-AI",
-                    "X-Title": "FinControl-AI"
-                }
+                top_p=1
             )
             return response.choices[0].message.content
 
@@ -121,7 +110,7 @@ Seja direto, prático e empático. Máximo 400 palavras."""
     except asyncio.TimeoutError:
         return "Timeout ao gerar análise. Tente novamente."
     except Exception as e:
-        print(f"[OpenRouter] Erro ao conectar: {str(e)}")
+        print(f"[Z.AI] Erro ao conectar: {str(e)}")
         return f"Erro ao conectar com serviço de IA: {str(e)}"
 
 
@@ -130,40 +119,38 @@ async def suggest_category(
     amount: float,
     categories: List[dict],
     previous_transactions: List[dict] = [],
-    openrouter_api_key: Optional[str] = None,
+    zai_api_key: Optional[str] = None,
     timeout_seconds: int = 20,
     max_retries: int = 3
 ) -> Tuple[Optional[str], float]:
     """
-    Sugere categoria usando OpenRouter (Xiaomi MiMo)
+    Sugere categoria usando Z.AI (GLM-4.7)
     
     Args:
         description: Descrição da transação
         amount: Valor da transação (em CENTAVOS, será convertido para reais no prompt)
         categories: Lista de categorias disponíveis
         previous_transactions: Exemplos para few-shot learning
-        openrouter_api_key: Chave API
+        zai_api_key: Chave API
         timeout_seconds: Timeout
         max_retries: Tentativas
     """
-    client = _get_client(openrouter_api_key)
+    client = _get_client(zai_api_key)
     
     if not client or not categories:
         return None, 0.0
 
-    # amount vem em centavos, converter para float
     amount_in_cents = amount
     transaction_type = "INCOME" if amount_in_cents > 0 else "EXPENSE"
     
     relevant_categories = [c for c in categories if c['type'] == transaction_type]
 
     if not relevant_categories:
-        print(f"[OpenRouter] Nenhuma categoria do tipo {transaction_type} disponível")
+        print(f"[Z.AI] Nenhuma categoria do tipo {transaction_type} disponível")
         return None, 0.0
 
     categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
     
-    # Prepara exemplos do histórico
     examples_text = ""
     if previous_transactions:
         examples_list = []
@@ -173,8 +160,6 @@ async def suggest_category(
         if examples_list:
             examples_text = "\n\nExemplos de categorizações anteriores deste usuário:\n" + "\n".join(examples_list)
 
-    # Prompt
-    # Importante: amount_in_cents / 100 para exibir em Reais
     prompt = f"""Categorize esta transação financeira brasileira.
 
 Transação: "{description}"
@@ -205,18 +190,8 @@ Se não tiver certeza, responda: none|0.0"""
                             "content": prompt
                         }
                     ],
-                    temperature=0.1, # Temperatura baixa para consistência
-                    max_tokens=50,
-                    extra_body={
-                        "provider": {
-                            "sort": "latency",
-                            "allow_fallbacks": True
-                        }
-                    },
-                    extra_headers={
-                        "HTTP-Referer": "https://github.com/DaniloFeeburg/FinControl-AI",
-                        "X-Title": "FinControl-AI"
-                    }
+                    temperature=0.1,
+                    max_tokens=50
                 )
                 return response.choices[0].message.content
 
@@ -227,7 +202,7 @@ Se não tiver certeza, responda: none|0.0"""
             )
             
             result = result.strip()
-            print(f"[OpenRouter] Descrição: {description[:50]}, Resposta: {result}")
+            print(f"[Z.AI] Descrição: {description[:50]}, Resposta: {result}")
 
             if '|' in result:
                 parts = result.split('|')
@@ -239,10 +214,9 @@ Se não tiver certeza, responda: none|0.0"""
                         confidence = 0.0
 
                     if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
-                        # print(f"[OpenRouter] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
                         return category_id, confidence
 
-            print(f"[OpenRouter] ✗ Resposta inválida ou categoria não encontrada")
+            print(f"[Z.AI] ✗ Resposta inválida ou categoria não encontrada")
             return None, 0.0
 
         except asyncio.TimeoutError:
@@ -254,18 +228,17 @@ Se não tiver certeza, responda: none|0.0"""
             error_str = str(e).lower()
             last_error = str(e)
             
-            # Rate limit - aguarda e tenta novamente
             if 'rate' in error_str or '429' in error_str:
                 if attempt < max_retries - 1:
                     wait_time = (2 ** attempt) * 1.5
-                    print(f"[OpenRouter] ⚠ Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
+                    print(f"[Z.AI] ⚠ Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
                     await asyncio.sleep(wait_time)
                     continue
             
-            print(f"[OpenRouter] Erro: {str(e)}")
+            print(f"[Z.AI] Erro: {str(e)}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)
                 continue
 
-    print(f"[OpenRouter] ⏱ Falha após {max_retries} tentativas: {last_error}")
+    print(f"[Z.AI] ⏱ Falha após {max_retries} tentativas: {last_error}")
     return None, 0.0
