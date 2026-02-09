@@ -761,8 +761,7 @@ async def preview_ofx_import(
                 "duplicate_id": duplicate_id
             })
 
-        # Processa categorizações EM PARALELO para transações não-duplicadas
-        # OpenRouter é rápido, mantemos configurações agressivas
+        # Processa categorizações com rate limiting para evitar HTTP 429
         import asyncio
 
         async def categorize_transaction(metadata):
@@ -779,9 +778,9 @@ async def preview_ofx_import(
             )
             return suggested_category_id, confidence
 
-        # Limita categorização por IA para evitar timeout
+        # Limita categorização por IA para evitar timeout e rate limiting
         # Transações além do limite ficarão sem sugestão (usuário pode categorizar manualmente)
-        MAX_AI_CATEGORIZATIONS = 50
+        MAX_AI_CATEGORIZATIONS = 20
         transactions_to_categorize = [
             meta for meta in transactions_metadata 
             if not meta["is_duplicate"]
@@ -792,8 +791,10 @@ async def preview_ofx_import(
         to_categorize = len(transactions_to_categorize)
         print(f"[OFX] Total: {total_txns} transações, Categorizando: {to_categorize} (limite: {MAX_AI_CATEGORIZATIONS})")
 
-        # Executa em lotes de 5 (Groq suporta 30 req/min)
+        # Rate limiter: 20 chamadas por minuto (1 chamada a cada 3 segundos)
+        # Executa em lotes de 5 com delay de 3 segundos entre batches
         batch_size = 5
+        batch_delay = 3.0
         categorization_results = {}
 
         for i in range(0, len(transactions_to_categorize), batch_size):
@@ -811,9 +812,10 @@ async def preview_ofx_import(
                 else:
                     categorization_results[idx] = result
             
-            # Delay reduzido entre batches (Groq é mais rápido)
+            # Delay entre batches para respeitar rate limit (20 req/min)
             if i + batch_size < len(transactions_to_categorize):
-                await asyncio.sleep(0.2)  # 200ms entre batches
+                print(f"[OFX] Aguardando {batch_delay}s antes do próximo batch...")
+                await asyncio.sleep(batch_delay)
 
         # Cria previews com os resultados
         previews = []
