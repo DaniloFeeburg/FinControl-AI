@@ -778,18 +778,19 @@ async def preview_ofx_import(
             )
             return suggested_category_id, confidence
 
-        # Limita categorização por IA para evitar timeout e rate limiting
-        # Transações além do limite ficarão sem sugestão (usuário pode categorizar manualmente)
-        MAX_AI_CATEGORIZATIONS = 20
+        # Processa TODAS as transações não-duplicadas com rate limiting
+        # Rate limit: 20 chamadas por minuto (1 chamada a cada 3 segundos)
+        # Se houver 40 transações, levará ~2 minutos. Se houver 100, ~5 minutos.
         transactions_to_categorize = [
             meta for meta in transactions_metadata 
             if not meta["is_duplicate"]
-        ][:MAX_AI_CATEGORIZATIONS]
+        ]
         
         # Log para debug
         total_txns = len(transactions_metadata)
         to_categorize = len(transactions_to_categorize)
-        print(f"[OFX] Total: {total_txns} transações, Categorizando: {to_categorize} (limite: {MAX_AI_CATEGORIZATIONS})")
+        estimated_minutes = (to_categorize / 20)
+        print(f"[OFX] Total: {total_txns} transações, Categorizando: {to_categorize} (estimado: ~{estimated_minutes:.1f} minutos)")
 
         # Rate limiter: 20 chamadas por minuto (1 chamada a cada 3 segundos)
         # Executa em lotes de 5 com delay de 3 segundos entre batches
@@ -814,13 +815,13 @@ async def preview_ofx_import(
             
             # Delay entre batches para respeitar rate limit (20 req/min)
             if i + batch_size < len(transactions_to_categorize):
-                print(f"[OFX] Aguardando {batch_delay}s antes do próximo batch...")
+                print(f"[OFX] Batch {i//batch_size + 1}/{(len(transactions_to_categorize)-1)//batch_size + 1} concluído, aguardando {batch_delay}s...")
                 await asyncio.sleep(batch_delay)
 
         # Cria previews com os resultados
         previews = []
         for idx, metadata in enumerate(transactions_metadata):
-            # Busca resultado da categorização (pode não existir se foi limitado)
+            # Busca resultado da categorização
             categorization = categorization_results.get(idx, (None, 0.0))
             suggested_category_id, confidence = categorization
 
