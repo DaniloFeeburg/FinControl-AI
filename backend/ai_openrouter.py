@@ -347,7 +347,19 @@ Se não tiver certeza, use confidence baixo (ex: 0.3)."""
                 else:
                     print(f"[OpenRouter] Primary: categoria inválida ou não encontrada")
             else:
-                print(f"[OpenRouter] Primary: JSON inválido")
+                print(f"[OpenRouter] Primary: JSON inválido, tentando reparar...")
+                repaired = _try_repair_json(primary_content)
+                if repaired and isinstance(repaired, dict):
+                    category_id = repaired.get("category_id")
+                    confidence = repaired.get("confidence", 0.0)
+                    
+                    if category_id and category_id in [c['id'] for c in relevant_categories]:
+                        print(f"[OpenRouter] Primary: JSON reparado com sucesso, categoria={category_id}, confidence={confidence}")
+                        return category_id, confidence
+                    else:
+                        print(f"[OpenRouter] Primary: JSON reparado mas categoria inválida")
+                else:
+                    print(f"[OpenRouter] Primary: Reparo falhou, usando fallback")
         
         fallback_content, fallback_error, fallback_latency = asyncio.run(_call_openrouter(
             api_key, FALLBACK_MODEL, messages, temperature=0.1, max_tokens=100, timeout_seconds=timeout_seconds
@@ -367,7 +379,19 @@ Se não tiver certeza, use confidence baixo (ex: 0.3)."""
                 else:
                     print(f"[OpenRouter] Fallback: categoria inválida ou não encontrada")
             else:
-                print(f"[OpenRouter] Fallback: JSON inválido")
+                print(f"[OpenRouter] Fallback: JSON inválido, tentando reparar...")
+                repaired = _try_repair_json(fallback_content)
+                if repaired and isinstance(repaired, dict):
+                    category_id = repaired.get("category_id")
+                    confidence = repaired.get("confidence", 0.0)
+                    
+                    if category_id and category_id in [c['id'] for c in relevant_categories]:
+                        print(f"[OpenRouter] Fallback: JSON reparado com sucesso, categoria={category_id}, confidence={confidence}")
+                        return category_id, confidence
+                    else:
+                        print(f"[OpenRouter] Fallback: JSON reparado mas categoria inválida")
+                else:
+                    print(f"[OpenRouter] Fallback: Reparo falhou")
         
         print(f"[OpenRouter] Falha completa: primary_error={primary_error}, fallback_error={fallback_error}")
         return None, 0.0
