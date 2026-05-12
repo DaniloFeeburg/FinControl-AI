@@ -10,7 +10,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     name = Column(String)
-    created_at = Column(String)
+    created_at = Column(DateTime)
 
     categories = relationship("Category", back_populates="user")
     transactions = relationship("Transaction", back_populates="user")
@@ -26,7 +26,7 @@ class CreditCard(Base):
     user_id = Column(String, ForeignKey("users.id"))
     name = Column(String)
     brand = Column(String) # Visa, Mastercard, Elo, Amex, Other
-    credit_limit = Column(Float)
+    credit_limit = Column(Integer)
     due_day = Column(Integer)
     closing_day = Column(Integer)
     color = Column(String)
@@ -68,11 +68,12 @@ class Transaction(Base):
     category_id = Column(String, ForeignKey("categories.id"))
     credit_card_id = Column(String, ForeignKey("credit_cards.id"), nullable=True)
     recurring_rule_id = Column(String, ForeignKey("recurring_rules.id"), nullable=True)
-    amount = Column(Float)
-    date = Column(String) # YYYY-MM-DD
+    amount = Column(Integer)
+    date = Column(Date)
     description = Column(String)
     status = Column(String) # PAID, PENDING
-    created_at = Column(String)
+    fitid = Column(String, nullable=True)
+    created_at = Column(DateTime)
 
     user = relationship("User", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
@@ -84,6 +85,7 @@ class Transaction(Base):
         Index('idx_transaction_user_category', 'user_id', 'category_id'),
         Index('idx_transaction_user_card', 'user_id', 'credit_card_id'),
         Index('idx_transaction_user_status', 'user_id', 'status'),
+        Index('idx_transaction_user_fitid', 'user_id', 'fitid'),
     )
 
 class RecurringRule(Base):
@@ -93,14 +95,14 @@ class RecurringRule(Base):
     user_id = Column(String, ForeignKey("users.id"))
     category_id = Column(String, ForeignKey("categories.id"))
     credit_card_id = Column(String, ForeignKey("credit_cards.id"), nullable=True)
-    amount = Column(Float)
+    amount = Column(Integer)
     description = Column(String)
     rrule = Column(String)
     active = Column(Boolean, default=True)
     auto_create = Column(Boolean, default=False)
-    last_execution = Column(String, nullable=True) # YYYY-MM-DD
-    next_execution = Column(String, nullable=True) # YYYY-MM-DD
-    end_date = Column(String, nullable=True) # YYYY-MM-DD
+    last_execution = Column(Date, nullable=True)
+    next_execution = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
 
     user = relationship("User", back_populates="recurring_rules")
     category = relationship("Category", back_populates="recurring_rules")
@@ -118,9 +120,9 @@ class Reserve(Base):
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))
     name = Column(String)
-    target_amount = Column(Float)
-    current_amount = Column(Float)
-    deadline = Column(String) # YYYY-MM-DD
+    target_amount = Column(Integer)
+    current_amount = Column(Integer)
+    deadline = Column(Date)
 
     user = relationship("User", back_populates="reserves")
     history = relationship("ReserveHistory", back_populates="reserve")
@@ -130,8 +132,8 @@ class ReserveHistory(Base):
 
     id = Column(String, primary_key=True, index=True)
     reserve_id = Column(String, ForeignKey("reserves.id"))
-    date = Column(String)
-    amount = Column(Float)
+    date = Column(DateTime)
+    amount = Column(Integer)
     type = Column(String) # DEPOSIT, WITHDRAW
 
     reserve = relationship("Reserve", back_populates="history")
@@ -142,7 +144,7 @@ class BudgetLimit(Base):
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))
     category_id = Column(String, ForeignKey("categories.id"))
-    monthly_limit = Column(Float)
+    monthly_limit = Column(Integer)
 
     user = relationship("User", back_populates="budget_limits")
     category = relationship("Category", back_populates="budget_limits")

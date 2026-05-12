@@ -11,6 +11,8 @@ passlib==1.7.4
 python-multipart
 python-dateutil
 ofxparse==0.21
+alembic==1.18.4
+mako==1.3.12
 
 # IA Providers
 openai>=1.0.0  # Para OpenRouter (Xiaomi MiMo, etc)

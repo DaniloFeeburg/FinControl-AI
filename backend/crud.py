@@ -14,7 +14,7 @@ def create_user(db: Session, user: schemas.UserCreate):
         email=user.email,
         hashed_password=hashed_password,
         name=user.name,
-        created_at=datetime.now().isoformat()
+        created_at=datetime.now()
     )
     db.add(db_user)
     db.commit()
@@ -109,7 +109,7 @@ def count_transactions(
     return query.count()
 
 def create_transaction(db: Session, transaction: schemas.TransactionCreate, user_id: str):
-    created_at = datetime.now().isoformat()
+    created_at = datetime.now()
     db_transaction = models.Transaction(id=str(uuid.uuid4()), user_id=user_id, created_at=created_at, **transaction.dict())
     db.add(db_transaction)
     db.commit()
@@ -149,6 +149,12 @@ def get_recent_transactions_with_category(db: Session, user_id: str, limit: int 
     ).order_by(
         models.Transaction.date.desc()
     ).limit(limit).all()
+
+def get_transaction_by_fitid(db: Session, user_id: str, fitid: str):
+    return db.query(models.Transaction).filter(
+        models.Transaction.user_id == user_id,
+        models.Transaction.fitid == fitid
+    ).first()
 
 # Recurring Rules
 def get_recurring_rules(db: Session, user_id: str):
@@ -215,7 +221,7 @@ def delete_reserve(db: Session, reserve_id: str, user_id: str):
         db.commit()
     return db_reserve
 
-def create_reserve_history(db: Session, reserve_id: str, amount: float, type: str, user_id: str):
+def create_reserve_history(db: Session, reserve_id: str, amount: int, type: str, user_id: str):
     # Ensure the reserve belongs to the user
     db_reserve = db.query(models.Reserve).filter(models.Reserve.id == reserve_id, models.Reserve.user_id == user_id).first()
     if not db_reserve:
@@ -229,7 +235,7 @@ def create_reserve_history(db: Session, reserve_id: str, amount: float, type: st
     db_history = models.ReserveHistory(
         id=str(uuid.uuid4()),
         reserve_id=reserve_id,
-        date=datetime.now().isoformat(),
+        date=datetime.now(),
         amount=amount,
         type=type
     )

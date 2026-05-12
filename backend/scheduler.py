@@ -28,8 +28,8 @@ def process_recurring_rules(db: Session):
             # We need to determine the next execution date.
 
             # If next_execution is set, check if we need to run it
-            if rule.next_execution:
-                next_exec_date = datetime.datetime.strptime(rule.next_execution, "%Y-%m-%d").date()
+            if rule.next_execution is not None:
+                next_exec_date = rule.next_execution
             else:
                 # If never executed or next_execution missing, calculate it.
                 # If last_execution exists, calculate next from there.
@@ -44,7 +44,7 @@ def process_recurring_rules(db: Session):
                 next_occ = rule_obj.after(datetime.datetime.now(), inc=True)
                 if next_occ:
                     next_exec_date = next_occ.date()
-                    rule.next_execution = next_exec_date.isoformat()
+                    rule.next_execution = next_exec_date
                     db.commit()
                 else:
                     continue # No next occurrence
@@ -57,19 +57,19 @@ def process_recurring_rules(db: Session):
                 transaction_data = schemas.TransactionCreate(
                     category_id=rule.category_id,
                     amount=rule.amount,
-                    date=next_exec_date.isoformat(),
+                    date=next_exec_date,
                     description=f"{rule.description} (Auto)",
-                    status="PENDING" # User asked for pending transactions
+                    status="PENDING"
                 )
 
                 # We need user_id. Rule has it.
                 # CRUD create_transaction expects a schema but adds user_id internally if passed to function?
                 # Let's look at crud.create_user_transaction.
 
-                crud.create_user_transaction(db, transaction_data, rule.user_id)
+                crud.create_transaction(db, transaction_data, rule.user_id)
 
                 # Update Rule
-                rule.last_execution = next_exec_date.isoformat()
+                rule.last_execution = next_exec_date
 
                 # Calculate NEW next_execution
                 # It should be after the execution date we just processed.
@@ -80,7 +80,7 @@ def process_recurring_rules(db: Session):
                 next_occ = rule_obj.after(dt_last_exec)
 
                 if next_occ:
-                    rule.next_execution = next_occ.date().isoformat()
+                    rule.next_execution = next_occ.date()
                 else:
                     rule.next_execution = None # No more occurrences
 

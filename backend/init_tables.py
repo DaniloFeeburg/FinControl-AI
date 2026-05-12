@@ -109,6 +109,10 @@ def init_db():
                     print("Migrating transactions: Adding recurring_rule_id column...")
                     conn.execute(text("ALTER TABLE transactions ADD COLUMN recurring_rule_id VARCHAR REFERENCES recurring_rules(id)"))
                     conn.commit()
+                if "fitid" not in cols:
+                    print("Migrating transactions: Adding fitid column...")
+                    conn.execute(text("ALTER TABLE transactions ADD COLUMN fitid VARCHAR"))
+                    conn.commit()
 
             if inspector.has_table("recurring_rules"):
                 cols = [c['name'] for c in inspector.get_columns("recurring_rules")]
@@ -116,6 +120,65 @@ def init_db():
                     print("Migrating recurring_rules: Adding credit_card_id column...")
                     conn.execute(text("ALTER TABLE recurring_rules ADD COLUMN credit_card_id VARCHAR REFERENCES credit_cards(id)"))
                     conn.commit()
+
+            # Migrate monetary columns from Float to Integer (cents)
+            float_to_int_migrations = {
+                "transactions": ["amount"],
+                "recurring_rules": ["amount"],
+                "reserves": ["target_amount", "current_amount"],
+                "reserve_history": ["amount"],
+                "credit_cards": ["credit_limit"],
+                "budget_limits": ["monthly_limit"],
+            }
+
+            for table_name, columns in float_to_int_migrations.items():
+                if not inspector.has_table(table_name):
+                    continue
+                cols_info = inspector.get_columns(table_name)
+                cols_types = {c['name']: str(c['type']) for c in cols_info}
+                for col_name in columns:
+                    if cols_types.get(col_name, "").upper().startswith("FLOAT"):
+                        print(f"Migrating {table_name}.{col_name}: Float -> Integer...")
+                        conn.execute(text(
+                            f"ALTER TABLE {table_name} ALTER COLUMN {col_name} TYPE INTEGER USING {col_name}::integer"
+                        ))
+                        conn.commit()
+
+            # Migrate date columns from String to native types
+            date_migrations = {
+                "users": {
+                    "created_at": "TIMESTAMP",
+                },
+                "transactions": {
+                    "date": "DATE",
+                    "created_at": "TIMESTAMP",
+                },
+                "recurring_rules": {
+                    "last_execution": "DATE",
+                    "next_execution": "DATE",
+                    "end_date": "DATE",
+                },
+                "reserves": {
+                    "deadline": "DATE",
+                },
+                "reserve_history": {
+                    "date": "TIMESTAMP",
+                },
+            }
+
+            for table_name, columns in date_migrations.items():
+                if not inspector.has_table(table_name):
+                    continue
+                cols_info = inspector.get_columns(table_name)
+                cols_types = {c['name']: str(c['type']) for c in cols_info}
+                for col_name, target_type in columns.items():
+                    current_type = cols_types.get(col_name, "").upper()
+                    if current_type in ("VARCHAR", "STRING", "TEXT"):
+                        print(f"Migrating {table_name}.{col_name}: String -> {target_type}...")
+                        conn.execute(text(
+                            f"ALTER TABLE {table_name} ALTER COLUMN {col_name} TYPE {target_type} USING {col_name}::{target_type.lower()}"
+                        ))
+                        conn.commit()
 
     except Exception as e:
         print(f"Error initializing/migrating data: {e}")

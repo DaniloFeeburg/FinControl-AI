@@ -8,7 +8,10 @@ Configuração:
 """
 import os
 import asyncio
+import logging
 from typing import Optional, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 # Constantes do OpenRouter
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -121,7 +124,7 @@ Seja direto, prático e empático. Máximo 400 palavras."""
     except asyncio.TimeoutError:
         return "Timeout ao gerar análise. Tente novamente."
     except Exception as e:
-        print(f"[OpenRouter] Erro ao conectar: {str(e)}")
+        logger.error(f"[OpenRouter] Erro ao conectar: {str(e)}")
         return f"Erro ao conectar com serviço de IA: {str(e)}"
 
 
@@ -158,7 +161,7 @@ async def suggest_category(
     relevant_categories = [c for c in categories if c['type'] == transaction_type]
 
     if not relevant_categories:
-        print(f"[OpenRouter] Nenhuma categoria do tipo {transaction_type} disponível")
+        logger.warning(f"[OpenRouter] Nenhuma categoria do tipo {transaction_type} disponível")
         return None, 0.0
 
     categories_text = "\n".join([f"{c['id']}: {c['name']}" for c in relevant_categories])
@@ -227,7 +230,7 @@ Se não tiver certeza, responda: none|0.0"""
             )
             
             result = result.strip()
-            print(f"[OpenRouter] Descrição: {description[:50]}, Resposta: {result}")
+            logger.debug(f"[OpenRouter] Descrição: {description[:50]}, Resposta: {result}")
 
             if '|' in result:
                 parts = result.split('|')
@@ -239,10 +242,10 @@ Se não tiver certeza, responda: none|0.0"""
                         confidence = 0.0
 
                     if category_id != 'none' and category_id in [c['id'] for c in relevant_categories]:
-                        # print(f"[OpenRouter] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
+                        # logger.debug(f"[OpenRouter] ✓ Categoria sugerida: {category_id} (confiança: {confidence})")
                         return category_id, confidence
 
-            print(f"[OpenRouter] ✗ Resposta inválida ou categoria não encontrada")
+            logger.warning(f"[OpenRouter] ✗ Resposta inválida ou categoria não encontrada")
             return None, 0.0
 
         except asyncio.TimeoutError:
@@ -258,14 +261,14 @@ Se não tiver certeza, responda: none|0.0"""
             if 'rate' in error_str or '429' in error_str:
                 if attempt < max_retries - 1:
                     wait_time = (2 ** attempt) * 1.5
-                    print(f"[OpenRouter] ⚠ Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
+                    logger.warning(f"[OpenRouter] Rate limit. Aguardando {wait_time}s (tentativa {attempt + 1}/{max_retries})")
                     await asyncio.sleep(wait_time)
                     continue
             
-            print(f"[OpenRouter] Erro: {str(e)}")
+            logger.error(f"[OpenRouter] Erro: {str(e)}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)
                 continue
 
-    print(f"[OpenRouter] ⏱ Falha após {max_retries} tentativas: {last_error}")
+    logger.error(f"[OpenRouter] Falha após {max_retries} tentativas: {last_error}")
     return None, 0.0

@@ -4,11 +4,15 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 from . import models, schemas, crud, auth, ofx_service
+from .credit_card_period import get_date_safe, get_statement_period
 from .database import engine, get_db
 from contextlib import asynccontextmanager
 import asyncio
 import os
+import logging
 from .scheduler import start_scheduler_loop
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -241,7 +245,7 @@ def delete_reserve(reserve_id: str, db: Session = Depends(get_db), current_user:
     return {"ok": True}
 
 class ReserveTransactionRequest(BaseModel):
-    amount: float
+    amount: int
     type: str
 
 @app.post("/reserves/{reserve_id}/transactions", response_model=schemas.Reserve)
@@ -275,9 +279,8 @@ def get_credit_card_statement(
     current_user: schemas.User = Depends(auth.get_current_user)
 ):
     import datetime
-    from dateutil.relativedelta import relativedelta
+    import re
 
-    # 1. Get the credit card
     card = db.query(models.CreditCard).filter(
         models.CreditCard.id == card_id,
         models.CreditCard.user_id == current_user.id
@@ -286,76 +289,23 @@ def get_credit_card_statement(
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    # 2. Calculate period range
-    # Period logic: closing_day of previous month to closing_day of current month (exclusive of end date usually, but depends on logic)
-    # Requeriment: "Entre dia de fechamento anterior e dia de fechamento atual"
-    # Example: Closing day 10. Statement for Nov (2023-11).
-    # Range: 2023-10-10 to 2023-11-09 (assuming closing day is the day the invoice closes, so transactions on that day might be next month or this month.
-    # Usually, closing day means transactions UP TO that day are in the invoice. Or closing day starts the NEW invoice?
-    # Common behavior: Closing day 10. Transactions up to day 10 (or 9) are in the closed invoice.
-    # Let's interpret: "Entre dia de fechamento anterior e dia de fechamento atual"
-    # Fatura de 10/Nov a 09/Dez -> This sounds like closing day is 10.
-
     try:
-        target_date = datetime.datetime.strptime(month, "%Y-%m")
+        start_date, end_date = get_statement_period(card.closing_day, month)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM")
-
-    closing_day = card.closing_day
-
-    # Calculate start date (previous month closing day)
-    # If target is 2023-11, and closing day is 10.
-    # Start: 2023-10-10. End: 2023-11-09.
-
-    # Handling months with fewer days than closing_day
-    # logic to clamp day?
-
-    def get_date_safe(year, month, day):
-        try:
-            return datetime.date(year, month, day)
-        except ValueError:
-            # If day is out of range for month (e.g. 31 in Feb), return last day of month
-            import calendar
-            last_day = calendar.monthrange(year, month)[1]
-            return datetime.date(year, month, last_day)
-
-    # Current Statement Month: target_date (YYYY-MM)
-    # The statement "belongs" to YYYY-MM usually means it is DUE in YYYY-MM or closes in YYYY-MM.
-    # If due day is 15th and closing is 10th.
-    # Nov invoice: Closes Nov 10. Due Nov 15. Range: Oct 10 - Nov 09.
-
-    # Let's assume the 'month' param refers to the month where the invoice closes.
-
-    current_month_date = target_date
-    prev_month_date = target_date - relativedelta(months=1)
-
-    start_date = get_date_safe(prev_month_date.year, prev_month_date.month, closing_day)
-    end_date = get_date_safe(current_month_date.year, current_month_date.month, closing_day)
-
-    # The requirement says "Exemplo: Fechamento dia 10 -> Fatura de 10/Nov a 09/Dez"
-    # This implies the invoice CLOSES on Dec 10 (or around there) covers Nov 10 to Dec 09.
-    # If the user selects "December", they want to see the invoice closing in December?
-    # Or if they select "November", they want to see what they spent in November?
-    # Credit Card statements are usually referred by their Due Month or Closing Month.
-    # Let's assume Closing Month.
-
-    # Adjusted Logic based on "Fechamento dia 10 -> Fatura de 10/Nov a 09/Dez"
-    # This range (Nov 10 - Dec 09) usually results in an invoice closing on Dec 10.
-    # So if I request month=2023-12, I expect transactions from 2023-11-10 to 2023-12-09.
 
     start_date_str = start_date.strftime("%Y-%m-%d")
     end_date_str = end_date.strftime("%Y-%m-%d")
 
-    # Query transactions
     transactions = db.query(models.Transaction).filter(
         models.Transaction.user_id == current_user.id,
         models.Transaction.credit_card_id == card_id,
-        models.Transaction.date >= start_date_str,
-        models.Transaction.date < end_date_str
+        models.Transaction.date >= start_date,
+        models.Transaction.date < end_date
     ).order_by(models.Transaction.date.desc()).all()
 
     statement_items = []
-    total_invoice = 0.0
+    total_invoice = 0
 
     for t in transactions:
         total_invoice += t.amount
@@ -399,8 +349,8 @@ def get_credit_card_statement(
                     continue
 
                 # Check rule end date
-                if rule.end_date:
-                    rule_end = datetime.datetime.strptime(rule.end_date, "%Y-%m-%d").date()
+                if rule.end_date is not None:
+                    rule_end = rule.end_date
                     if d > rule_end:
                         continue
 
@@ -444,7 +394,7 @@ def get_credit_card_statement(
                 "credit_card_id": item.credit_card_id,
                 "recurring_rule_id": item.recurring_rule_id,
                 "amount": item.amount,
-                "date": item.date,
+                "date": item.date.isoformat() if hasattr(item.date, 'isoformat') else str(item.date),
                 "description": item.description,
                 "status": item.status,
                 "created_at": item.created_at.isoformat() if hasattr(item.created_at, 'isoformat') else str(item.created_at)
@@ -455,9 +405,10 @@ def get_credit_card_statement(
 
     status = "OPEN"
     today = datetime.date.today()
+    target_year, target_month = int(month.split("-")[0]), int(month.split("-")[1])
     if today >= end_date:
         status = "CLOSED"
-        due_date = get_date_safe(current_month_date.year, current_month_date.month, card.due_day)
+        due_date = get_date_safe(target_year, target_month, card.due_day)
         if today > due_date:
             status = "OVERDUE"
 
@@ -466,7 +417,7 @@ def get_credit_card_statement(
         "transactions": normalized_items,
         "total": total_invoice,
         "status": status,
-        "due_date": get_date_safe(current_month_date.year, current_month_date.month, card.due_day).strftime("%Y-%m-%d")
+        "due_date": get_date_safe(target_year, target_month, card.due_day).strftime("%Y-%m-%d")
     }
 
 @app.get("/credit_cards/{card_id}/projection")
@@ -490,34 +441,11 @@ def get_credit_card_projection(
     projections = []
     today = datetime.date.today()
 
-    # Project next 12 months
-    # For each month, calculate the statement total (Projected)
-
     for i in range(12):
         target_date = today + relativedelta(months=i)
-        # We need to align target_date to the statement month.
-        # If today is Dec 15. i=0 -> Dec. i=1 -> Jan.
-        # We want the statement that "closes" in that month? Or is "due" in that month?
-        # Typically "Jan Invoice".
-
-        # Reuse logic slightly:
-        # Statement Month X: Range [Prev Month Closing, Month X Closing)
-
         closing_day = card.closing_day
 
-        def get_date_safe(year, month, day):
-            try:
-                return datetime.date(year, month, day)
-            except ValueError:
-                import calendar
-                last_day = calendar.monthrange(year, month)[1]
-                return datetime.date(year, month, last_day)
-
-        current_month_date = target_date
-        prev_month_date = target_date - relativedelta(months=1)
-
-        start_date = get_date_safe(prev_month_date.year, prev_month_date.month, closing_day)
-        end_date = get_date_safe(current_month_date.year, current_month_date.month, closing_day)
+        start_date, end_date = get_statement_period(closing_day, target_date.strftime("%Y-%m"))
 
         start_date_str = start_date.strftime("%Y-%m-%d")
         end_date_str = end_date.strftime("%Y-%m-%d")
@@ -527,8 +455,8 @@ def get_credit_card_projection(
         txns = db.query(models.Transaction).filter(
             models.Transaction.user_id == current_user.id,
             models.Transaction.credit_card_id == card_id,
-            models.Transaction.date >= start_date_str,
-            models.Transaction.date < end_date_str
+            models.Transaction.date >= start_date,
+            models.Transaction.date < end_date
         ).all()
 
         month_total = sum(t.amount for t in txns)
@@ -559,7 +487,7 @@ def get_credit_card_projection(
 
                 added = False
                 for d in candidates:
-                    rule_end = datetime.datetime.strptime(rule.end_date, "%Y-%m-%d").date() if rule.end_date else None
+                    rule_end = rule.end_date if rule.end_date is not None else None
                     if start_date <= d < end_date:
                         if rule_end and d > rule_end:
                             continue
@@ -567,7 +495,7 @@ def get_credit_card_projection(
                         # Avoid double counting if transaction already exists
                         already_exists = any(
                             t.recurring_rule_id == rule.id and
-                            t.date == d.strftime("%Y-%m-%d")
+                            t.date == d
                             for t in txns
                         )
 
@@ -578,7 +506,7 @@ def get_credit_card_projection(
         projections.append({
             "month": target_date.strftime("%Y-%m"),
             "total": month_total,
-            "due_date": get_date_safe(current_month_date.year, current_month_date.month, card.due_day).strftime("%Y-%m-%d")
+            "due_date": get_date_safe(target_date.year, target_date.month, card.due_day).strftime("%Y-%m-%d")
         })
 
     return projections
@@ -590,11 +518,6 @@ def pay_credit_card_invoice(
     db: Session = Depends(get_db),
     current_user: schemas.User = Depends(auth.get_current_user)
 ):
-    # Reuse logic to find transactions for the period
-    # Ideally refactor period logic to a helper, but for now duplicate to ensure safety
-    import datetime
-    from dateutil.relativedelta import relativedelta
-
     card = db.query(models.CreditCard).filter(
         models.CreditCard.id == card_id,
         models.CreditCard.user_id == current_user.id
@@ -604,25 +527,9 @@ def pay_credit_card_invoice(
         raise HTTPException(status_code=404, detail="Card not found")
 
     try:
-        target_date = datetime.datetime.strptime(month, "%Y-%m")
+        start_date, end_date = get_statement_period(card.closing_day, month)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid month format")
-
-    closing_day = card.closing_day
-
-    def get_date_safe(year, month, day):
-        try:
-            return datetime.date(year, month, day)
-        except ValueError:
-            import calendar
-            last_day = calendar.monthrange(year, month)[1]
-            return datetime.date(year, month, last_day)
-
-    current_month_date = target_date
-    prev_month_date = target_date - relativedelta(months=1)
-
-    start_date = get_date_safe(prev_month_date.year, prev_month_date.month, closing_day)
-    end_date = get_date_safe(current_month_date.year, current_month_date.month, closing_day)
 
     start_date_str = start_date.strftime("%Y-%m-%d")
     end_date_str = end_date.strftime("%Y-%m-%d")
@@ -630,8 +537,8 @@ def pay_credit_card_invoice(
     transactions = db.query(models.Transaction).filter(
         models.Transaction.user_id == current_user.id,
         models.Transaction.credit_card_id == card_id,
-        models.Transaction.date >= start_date_str,
-        models.Transaction.date < end_date_str,
+        models.Transaction.date >= start_date,
+        models.Transaction.date < end_date,
         models.Transaction.status == 'PENDING'
     ).all()
 
@@ -688,7 +595,7 @@ async def get_ai_analysis(
             }
             
         except Exception as e:
-            print(f"[AI] Erro com OpenRouter, tentando fallback: {str(e)}")
+            logger.error(f"[AI] Erro com OpenRouter, tentando fallback: {str(e)}")
             # Continua para o fallback
     
     # Fallback: Gemini (se configurado)
@@ -772,13 +679,6 @@ async def preview_ofx_import(
             for txt_desc, cat_name in previous_txns
         ]
 
-        # Busca histórico de categorizações para aprendizado (few-shot)
-        previous_txns = crud.get_recent_transactions_with_category(db, user_id=current_user.id, limit=30)
-        previous_txns_data = [
-            {"description": txt_desc, "category_name": cat_name} 
-            for txt_desc, cat_name in previous_txns
-        ]
-
         # Pega a chave da API do OpenRouter
         # Fallback para Gemini mantido apenas como referência legado, mas OpenRouter é o principal
         openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
@@ -838,7 +738,7 @@ async def preview_ofx_import(
         # Log para debug
         total_txns = len(transactions_metadata)
         to_categorize = len(transactions_to_categorize)
-        print(f"[OFX] Total: {total_txns} transações, Categorizando: {to_categorize} (limite: {MAX_AI_CATEGORIZATIONS})")
+        logger.info(f"[OFX] Total: {total_txns} transações, Categorizando: {to_categorize} (limite: {MAX_AI_CATEGORIZATIONS})")
 
         # Executa em lotes de 5 (Groq suporta 30 req/min)
         batch_size = 5
@@ -908,7 +808,6 @@ async def confirm_ofx_import(
     try:
         import datetime
         import re
-        import calendar
         from dateutil.relativedelta import relativedelta
 
         def parse_installment_info(description: str, regex: str, separator_pattern: str) -> Optional[tuple]:
@@ -933,13 +832,6 @@ async def confirm_ofx_import(
                 base_description = re.sub(pattern, '', trimmed, flags=re.IGNORECASE).strip() or trimmed
 
             return current, total, base_description
-
-        def get_date_safe(year: int, month: int, day: int) -> datetime.date:
-            try:
-                return datetime.date(year, month, day)
-            except ValueError:
-                last_day = calendar.monthrange(year, month)[1]
-                return datetime.date(year, month, last_day)
 
         card_cache = {}
         category_cache = {}
@@ -1020,10 +912,10 @@ async def confirm_ofx_import(
                         existing_rule = db.query(models.RecurringRule).filter(
                             models.RecurringRule.user_id == current_user.id,
                             models.RecurringRule.description == base_description,
-                            models.RecurringRule.amount == float(txn_data['amount']),
+                            models.RecurringRule.amount == int(txn_data['amount']),
                             models.RecurringRule.category_id == category_id,
                             models.RecurringRule.credit_card_id == credit_card_id,
-                            models.RecurringRule.end_date == end_date.isoformat()
+                            models.RecurringRule.end_date == end_date
                         ).first()
 
                         if existing_rule:
@@ -1032,12 +924,12 @@ async def confirm_ofx_import(
                             rule_create = schemas.RecurringRuleCreate(
                                 category_id=category_id,
                                 credit_card_id=credit_card_id,
-                                amount=float(txn_data['amount']),
+                                amount=int(txn_data['amount']),
                                 description=base_description,
                                 rrule=rrule,
                                 active=True,
                                 auto_create=False,
-                                end_date=end_date.isoformat()
+                                end_date=end_date
                             )
                             created_rule = crud.create_recurring_rule(
                                 db=db,
@@ -1051,14 +943,17 @@ async def confirm_ofx_import(
                 if credit_card_id:
                     status = 'PENDING'
 
+                fitid = txn_data.get('fitid') or txn_data.get('ofx_data', {}).get('fitid')
+
                 transaction_create = schemas.TransactionCreate(
                     category_id=category_id,
                     credit_card_id=credit_card_id,
                     recurring_rule_id=recurring_rule_id,
-                    amount=float(txn_data['amount']),
+                    amount=int(txn_data['amount']),
                     date=txn_data['date'],
                     description=description,
-                    status=status
+                    status=status,
+                    fitid=fitid
                 )
 
                 # Cria no banco de dados
@@ -1072,7 +967,7 @@ async def confirm_ofx_import(
                 transaction_ids.append(created_txn.id)
 
             except Exception as e:
-                print(f"Erro ao importar transação: {str(e)}")
+                logger.error(f"Erro ao importar transação: {str(e)}")
                 failed_count += 1
                 continue
 

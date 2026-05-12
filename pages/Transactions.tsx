@@ -6,9 +6,13 @@ import { formatCurrency } from '../utils/projection';
 import { Transaction } from '../types';
 
 export const Transactions: React.FC = () => {
-  const { transactions, categories, creditCards, recurringRules, addTransaction, updateTransaction, deleteTransaction, addRecurringRule } = useStore();
+  const { transactions, totalTransactions, categories, creditCards, recurringRules, addTransaction, updateTransaction, deleteTransaction, addRecurringRule, fetchTransactions } = useStore();
   const [filter, setFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   
+  // Pagination State
+  const [limit] = useState(50);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   // Form State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -163,6 +167,12 @@ export const Transactions: React.FC = () => {
     
     resetForm();
     setCreateRecurring(false);
+  };
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    await fetchTransactions(transactions.length, limit, true);
+    setLoadingMore(false);
   };
 
   return (
@@ -422,6 +432,19 @@ export const Transactions: React.FC = () => {
           </div>
         )}
       </div>
+
+      {transactions.length < totalTransactions && (
+        <div className="flex justify-center pt-4">
+          <Button 
+            variant="ghost" 
+            onClick={handleLoadMore} 
+            disabled={loadingMore}
+            className="text-zinc-400 hover:text-white border border-zinc-800"
+          >
+            {loadingMore ? 'Carregando...' : 'Carregar Mais'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

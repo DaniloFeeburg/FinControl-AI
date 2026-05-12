@@ -1,5 +1,6 @@
 from pydantic import BaseModel, field_validator
 from typing import List, Optional
+from datetime import date, datetime
 import re
 
 # Auth Schemas
@@ -63,7 +64,7 @@ class Category(CategoryBase):
 class CreditCardBase(BaseModel):
     name: str
     brand: str
-    credit_limit: float
+    credit_limit: int
     due_day: int
     closing_day: int
     color: str
@@ -105,16 +106,24 @@ class TransactionBase(BaseModel):
     category_id: Optional[str] = None
     credit_card_id: Optional[str] = None
     recurring_rule_id: Optional[str] = None
-    amount: float
-    date: str
+    amount: int
+    date: date
     description: str
     status: str
+    fitid: Optional[str] = None
+
+    @field_validator('date')
+    @classmethod
+    def validate_date(cls, v):
+        if isinstance(v, str):
+            return datetime.strptime(v, "%Y-%m-%d").date()
+        return v
 
     @field_validator('amount')
     def validate_amount(cls, v):
         if v == 0:
             raise ValueError('Valor não pode ser zero')
-        return v
+        return int(v)
     
     @field_validator('status')
     def validate_status(cls, v):
@@ -128,7 +137,7 @@ class TransactionCreate(TransactionBase):
 class Transaction(TransactionBase):
     id: str
     user_id: str
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -136,14 +145,23 @@ class Transaction(TransactionBase):
 class RecurringRuleBase(BaseModel):
     category_id: Optional[str] = None
     credit_card_id: Optional[str] = None
-    amount: float
+    amount: int
     description: str
     rrule: str
     active: bool
     auto_create: bool = False
-    last_execution: Optional[str] = None
-    next_execution: Optional[str] = None
-    end_date: Optional[str] = None
+    last_execution: Optional[date] = None
+    next_execution: Optional[date] = None
+    end_date: Optional[date] = None
+
+    @field_validator('last_execution', 'next_execution', 'end_date')
+    @classmethod
+    def validate_optional_date(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, str):
+            return datetime.strptime(v, "%Y-%m-%d").date()
+        return v
 
     @field_validator('rrule')
     def validate_rrule(cls, v):
@@ -188,9 +206,16 @@ class RecurringRule(RecurringRuleBase):
         from_attributes = True
 
 class ReserveHistoryBase(BaseModel):
-    date: str
-    amount: float
+    date: date
+    amount: int
     type: str
+
+    @field_validator('date')
+    @classmethod
+    def validate_date(cls, v):
+        if isinstance(v, str):
+            return datetime.strptime(v, "%Y-%m-%d").date()
+        return v
 
 class ReserveHistoryCreate(ReserveHistoryBase):
     pass
@@ -204,9 +229,16 @@ class ReserveHistory(ReserveHistoryBase):
 
 class ReserveBase(BaseModel):
     name: str
-    target_amount: float
-    current_amount: float
-    deadline: str
+    target_amount: int
+    current_amount: int
+    deadline: date
+
+    @field_validator('deadline')
+    @classmethod
+    def validate_deadline(cls, v):
+        if isinstance(v, str):
+            return datetime.strptime(v, "%Y-%m-%d").date()
+        return v
 
 class ReserveCreate(ReserveBase):
     pass
@@ -222,7 +254,7 @@ class Reserve(ReserveBase):
 # Budget Limit Schemas
 class BudgetLimitBase(BaseModel):
     category_id: str
-    monthly_limit: float
+    monthly_limit: int
 
     @field_validator('monthly_limit')
     def validate_monthly_limit(cls, v):

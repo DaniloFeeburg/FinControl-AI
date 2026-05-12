@@ -7,6 +7,9 @@ from typing import List, Optional, Tuple
 import base64
 import io
 from sqlalchemy.orm import Session
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .schemas import (
     OFXTransactionParsed,
@@ -248,10 +251,10 @@ def detect_duplicate(
 
     # Verifica por FITID exato (mais confiável)
     if fitid:
-        for txn in existing:
-            # Aqui você precisaria armazenar o FITID no banco para comparação
-            # Por enquanto, vamos apenas comparar valor e descrição
-            pass
+        from . import crud as crud_module
+        existing_by_fitid = crud_module.get_transaction_by_fitid(db, user_id, fitid)
+        if existing_by_fitid:
+            return True, existing_by_fitid.id
 
     # Verifica por valor e descrição similares
     for txn in existing:
@@ -307,11 +310,11 @@ async def suggest_category_with_ai(
             return category_id, confidence
                 
         except Exception as e:
-            print(f"[IA-OpenRouter] Erro ao sugerir categoria: {str(e)}")
+            logger.error(f"[IA-OpenRouter] Erro ao sugerir categoria: {str(e)}")
             return None, 0.0
     
     # Nenhum provedor configurado
-    print("[IA] OPENROUTER_API_KEY não configurada")
+    logger.warning("[IA] OPENROUTER_API_KEY não configurada")
     return None, 0.0
 
 

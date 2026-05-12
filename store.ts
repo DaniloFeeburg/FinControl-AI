@@ -17,6 +17,7 @@ interface AppState {
 
   categories: Category[];
   transactions: Transaction[];
+  totalTransactions: number;
   recurringRules: RecurringRule[];
   reserves: Reserve[];
   creditCards: CreditCard[];
@@ -27,6 +28,7 @@ interface AppState {
 
   // Initialization
   fetchAllData: () => Promise<void>;
+  fetchTransactions: (skip?: number, limit?: number, append?: boolean) => Promise<void>;
 
   // Transactions
   addTransaction: (t: Omit<Transaction, 'id' | 'created_at'>) => Promise<Transaction | undefined>;
@@ -91,6 +93,7 @@ export const useStore = create<AppState>((set, get) => ({
   isAuthenticated: !!localStorage.getItem('token'),
   categories: [],
   transactions: [],
+  totalTransactions: 0,
   recurringRules: [],
   reserves: [],
   creditCards: [],
@@ -146,9 +149,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   logout: () => {
     localStorage.removeItem('token');
-    localStorage.clear(); // Clear all data as requested
-    set({ user: null, token: null, isAuthenticated: false, categories: [], transactions: [], recurringRules: [], reserves: [], creditCards: [], budgetLimits: [] });
-    // Force reload to clear any memory states if needed, or just redirect
+    set({ user: null, token: null, isAuthenticated: false, categories: [], transactions: [], totalTransactions: 0, recurringRules: [], reserves: [], creditCards: [], budgetLimits: [] });
     window.location.hash = '#/login';
   },
 
@@ -186,26 +187,50 @@ export const useStore = create<AppState>((set, get) => ({
       const headers = getAuthHeaders(token);
       const authFetch = (url: string) => authorizedFetch(url, { headers }, get().logout).then(r => r.json());
 
-      const [cats, trans, rules, res, cards, budgets] = await Promise.all([
+      const [cats, rules, res, cards, budgets] = await Promise.all([
         authFetch(`${API_URL}/categories`),
-        authFetch(`${API_URL}/transactions`),
         authFetch(`${API_URL}/recurring_rules`),
         authFetch(`${API_URL}/reserves`),
         authFetch(`${API_URL}/credit_cards`),
         authFetch(`${API_URL}/budgets`)
       ]);
+      
       set({
         categories: cats,
-        transactions: trans,
         recurringRules: rules,
         reserves: res,
         creditCards: cards,
         budgetLimits: budgets,
         loading: false
       });
+
+      // Fetch first page of transactions
+      await get().fetchTransactions(0, 50, false);
     } catch (err) {
       console.error(err);
       set({ error: 'Failed to fetch data', loading: false });
+    }
+  },
+
+  fetchTransactions: async (skip = 0, limit = 50, append = false) => {
+    const { token, logout } = get();
+    if (!token) return;
+
+    try {
+        const headers = getAuthHeaders(token);
+        const [trans, countRes] = await Promise.all([
+            authorizedFetch(`${API_URL}/transactions?skip=${skip}&limit=${limit}`, { headers }, logout).then(r => r.json()),
+            authorizedFetch(`${API_URL}/transactions/count`, { headers }, logout).then(r => r.json())
+        ]);
+
+        set((state) => ({
+            transactions: append ? [...state.transactions, ...trans] : trans,
+            totalTransactions: countRes.count,
+            loading: false
+        }));
+    } catch (err) {
+        console.error(err);
+        set({ error: 'Failed to fetch transactions', loading: false });
     }
   },
 
