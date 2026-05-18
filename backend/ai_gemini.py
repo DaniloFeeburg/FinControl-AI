@@ -9,7 +9,7 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 GEMINI_FREE_RPM = 15
 GEMINI_FREE_RPD = 1500
