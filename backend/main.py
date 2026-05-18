@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
+from dotenv import load_dotenv
 from . import models, schemas, crud, auth, ofx_service
 from .credit_card_period import get_date_safe, get_statement_period
 from .database import engine, get_db
@@ -11,6 +12,8 @@ import asyncio
 import os
 import logging
 from .scheduler import start_scheduler_loop
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -566,89 +569,40 @@ async def get_ai_analysis(
 ):
     """
     Endpoint protegido para análise financeira com IA.
-    Usa OpenRouter (Xiaomi MiMo, gratuito) como provedor principal.
-    Fallback para Gemini se OpenRouter não estiver configurado.
+    Usa Gemini 2.0 Flash como provedor principal.
     """
     import time
-    
-    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+
     gemini_api_key = os.getenv("GEMINI_API_KEY")
-    
-    # Tenta OpenRouter primeiro (gratuito e alta performance)
-    if openrouter_api_key:
+
+    if gemini_api_key:
         try:
-            from .ai_openrouter import get_financial_analysis
-            
+            from .ai_gemini import get_financial_analysis
+
             analysis = await get_financial_analysis(
                 balance=request.balance,
                 monthly_income=request.monthly_income,
                 monthly_expenses=request.monthly_expenses,
                 reserves_total=request.reserves_total,
                 context=request.context,
-                openrouter_api_key=openrouter_api_key
+                gemini_api_key=gemini_api_key,
             )
-            
+
             return {
                 "analysis": analysis,
-                "provider": "openrouter/xiaomi",
-                "timestamp": time.time()
-            }
-            
-        except Exception as e:
-            logger.error(f"[AI] Erro com OpenRouter, tentando fallback: {str(e)}")
-            # Continua para o fallback
-    
-    # Fallback: Gemini (se configurado)
-    if gemini_api_key:
-        try:
-            from google import generativeai as genai
-            
-            genai.configure(api_key=gemini_api_key)
-            model = genai.GenerativeModel('gemini-pro')
-            
-            prompt = f"""
-Você é um consultor financeiro experiente. Analise os dados financeiros abaixo e forneça insights práticos e personalizados.
-
-**Dados Financeiros:**
-- Saldo Total: R$ {request.balance:.2f}
-- Receita Mensal: R$ {request.monthly_income:.2f}
-- Despesas Mensais: R$ {request.monthly_expenses:.2f}
-- Total em Reservas: R$ {request.reserves_total:.2f}
-
-{f"**Contexto adicional:** {request.context}" if request.context else ""}
-
-Forneça uma análise com:
-1. Diagnóstico da situação financeira atual
-2. Pontos de atenção e alertas
-3. Recomendações práticas e acionáveis
-4. Sugestões de metas financeiras
-
-Seja direto, prático e empático. Máximo 300 palavras.
-"""
-            
-            response = model.generate_content(prompt)
-            
-            return {
-                "analysis": response.text,
                 "provider": "gemini",
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
-            
-        except ImportError:
-            raise HTTPException(
-                status_code=503,
-                detail="Biblioteca do Google Generative AI não instalada"
-            )
+
         except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Erro ao gerar análise: {str(e)}"
+                detail=f"Erro ao gerar análise: {str(e)}",
             )
-    
-    # Nenhum provedor configurado
+
     raise HTTPException(
-        status_code=503, 
-        detail="Serviço de IA não configurado. Configure OPENROUTER_API_KEY."
+        status_code=503,
+        detail="Serviço de IA não configurado. Configure GEMINI_API_KEY.",
     )
 
 # OFX Import Endpoints
@@ -679,9 +633,7 @@ async def preview_ofx_import(
             for txt_desc, cat_name in previous_txns
         ]
 
-        # Pega a chave da API do OpenRouter
-        # Fallback para Gemini mantido apenas como referência legado, mas OpenRouter é o principal
-        openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+        gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
         # Detecta duplicatas para todas as transações primeiro (operação rápida)
         transactions_metadata = []
@@ -709,38 +661,34 @@ async def preview_ofx_import(
                 "duplicate_id": duplicate_id
             })
 
-        # Processa categorizações EM PARALELO para transações não-duplicadas
-        # OpenRouter/Xiaomi é rápido, mantemos configurações agressivas
+        # Processa categorizações via Gemini com rate limiting automático
         import asyncio
 
         async def categorize_transaction(metadata):
-            # Pula duplicatas - não precisa categorizar
             if metadata["is_duplicate"]:
                 return None, 0.0
-            
+
             suggested_category_id, confidence = await ofx_service.suggest_category_with_ai(
                 description=metadata["transaction"].payee,
                 amount=metadata["transaction"].amount,
                 categories=categories_for_ai,
                 previous_transactions=previous_txns_data,
-                openrouter_api_key=openrouter_api_key
+                gemini_api_key=gemini_api_key
             )
             return suggested_category_id, confidence
 
-        # Limita categorização por IA para evitar timeout
-        # Transações além do limite ficarão sem sugestão (usuário pode categorizar manualmente)
         MAX_AI_CATEGORIZATIONS = 50
         transactions_to_categorize = [
-            meta for meta in transactions_metadata 
+            meta for meta in transactions_metadata
             if not meta["is_duplicate"]
         ][:MAX_AI_CATEGORIZATIONS]
-        
-        # Log para debug
+
         total_txns = len(transactions_metadata)
         to_categorize = len(transactions_to_categorize)
         logger.info(f"[OFX] Total: {total_txns} transações, Categorizando: {to_categorize} (limite: {MAX_AI_CATEGORIZATIONS})")
 
-        # Executa em lotes de 5 (Groq suporta 30 req/min)
+        # O rate limiter do ai_gemini.py garante ~4s entre cada request (15 RPM)
+        # Lotes de 5 com 0.2s de overhead = cada lote leva ~20s naturalmente
         batch_size = 5
         categorization_results = {}
 
@@ -750,18 +698,16 @@ async def preview_ofx_import(
                 *[categorize_transaction(meta) for meta in batch],
                 return_exceptions=True
             )
-            
-            # Mapeia resultados pelo índice original
+
             for meta, result in zip(batch, batch_results):
                 idx = transactions_metadata.index(meta)
                 if isinstance(result, Exception):
                     categorization_results[idx] = (None, 0.0)
                 else:
                     categorization_results[idx] = result
-            
-            # Delay reduzido entre batches (Groq é mais rápido)
+
             if i + batch_size < len(transactions_to_categorize):
-                await asyncio.sleep(0.2)  # 200ms entre batches
+                await asyncio.sleep(0.2)
 
         # Cria previews com os resultados
         previews = []

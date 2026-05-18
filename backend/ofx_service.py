@@ -275,46 +275,39 @@ async def suggest_category_with_ai(
     amount: float,
     categories: List[dict],
     previous_transactions: List[dict] = [],
-    gemini_api_key: str = "",  # Mantido para compatibilidade
+    gemini_api_key: str = "",
     timeout_seconds: int = 15,
     max_retries: int = 3,
     openrouter_api_key: str = ""
 ) -> Tuple[Optional[str], float]:
-    """
-    Sugere categoria baseado na descrição usando IA.
-    Usa apenas OpenRouter (Xiaomi MiMo, gratuito) como provedor principal.
-    """
-    import asyncio
     import os
-    
-    # Obtém API key do OpenRouter
-    openrouter_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
-    
+
     if not categories:
         return None, 0.0
-    
-    if openrouter_key:
+
+    gemini_key = gemini_api_key or os.getenv("GEMINI_API_KEY", "")
+
+    if gemini_key:
         try:
-            from .ai_openrouter import suggest_category
-            
+            from .ai_gemini import suggest_category
+
             category_id, confidence = await suggest_category(
                 description=description,
                 amount=amount,
                 categories=categories,
                 previous_transactions=previous_transactions,
-                openrouter_api_key=openrouter_key,
+                gemini_api_key=gemini_key,
                 timeout_seconds=timeout_seconds,
-                max_retries=max_retries
+                max_retries=max_retries,
             )
-            
+
             return category_id, confidence
-                
+
         except Exception as e:
-            logger.error(f"[IA-OpenRouter] Erro ao sugerir categoria: {str(e)}")
+            logger.error(f"[IA-Gemini] Erro ao sugerir categoria: {str(e)}")
             return None, 0.0
-    
-    # Nenhum provedor configurado
-    logger.warning("[IA] OPENROUTER_API_KEY não configurada")
+
+    logger.warning("[IA] GEMINI_API_KEY não configurada")
     return None, 0.0
 
 
