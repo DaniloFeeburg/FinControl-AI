@@ -4,6 +4,9 @@ import asyncio
 import logging
 from typing import Optional, List, Tuple
 
+from google import genai
+from google.genai import types
+
 logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = "gemini-2.0-flash"
@@ -42,17 +45,14 @@ def configure_rate_limit(rpm: int):
     logger.info(f"[Gemini] Rate limiter configurado para {rpm} RPM")
 
 
-def _configure_genai(api_key: Optional[str] = None):
-    from google import generativeai as genai
-
+def _get_client(api_key: Optional[str] = None):
     key = api_key or os.getenv("GEMINI_API_KEY", "")
     key = key.strip().replace("\r", "").replace("\n", "")
 
     if not key:
         return None
 
-    genai.configure(api_key=key)
-    return genai.GenerativeModel(GEMINI_MODEL)
+    return genai.Client(api_key=key)
 
 
 async def suggest_category(
@@ -64,9 +64,9 @@ async def suggest_category(
     timeout_seconds: int = 20,
     max_retries: int = 3,
 ) -> Tuple[Optional[str], float]:
-    model = _configure_genai(gemini_api_key)
+    client = _get_client(gemini_api_key)
 
-    if not model or not categories:
+    if not client or not categories:
         return None, 0.0
 
     amount_in_cents = amount
@@ -111,12 +111,13 @@ Se não tiver certeza, responda: none|0.0"""
             await _rate_limiter.acquire()
 
             def _call_ai():
-                response = model.generate_content(
-                    prompt,
-                    generation_config={
-                        "temperature": 0.1,
-                        "max_output_tokens": 50,
-                    },
+                response = client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        max_output_tokens=50,
+                    ),
                 )
                 return response.text
 
@@ -180,9 +181,9 @@ async def get_financial_analysis(
     gemini_api_key: Optional[str] = None,
     timeout_seconds: int = 45,
 ) -> str:
-    model = _configure_genai(gemini_api_key)
+    client = _get_client(gemini_api_key)
 
-    if not model:
+    if not client:
         return "Configure a variável GEMINI_API_KEY para habilitar análises inteligentes."
 
     prompt = f"""Você é um consultor financeiro experiente. Analise os dados abaixo e forneça insights práticos.
@@ -207,12 +208,13 @@ Seja direto, prático e empático. Máximo 400 palavras."""
         await _rate_limiter.acquire()
 
         def _call_ai():
-            response = model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": 0.7,
-                    "max_output_tokens": 1024,
-                },
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    max_output_tokens=1024,
+                ),
             )
             return response.text
 
